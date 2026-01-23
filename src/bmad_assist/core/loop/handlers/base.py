@@ -460,6 +460,24 @@ class BaseHandler(ABC):
         template = Template(handler_config.prompt_template)
         return template.render(**context)
 
+    def _get_provider_type(self) -> str:
+        """Get provider type, defaulting to 'master' if no handler config exists.
+
+        When using the new compiler system, handler YAML files don't exist.
+        In that case, we default to 'master' provider since compiled workflows
+        are always executed by the master LLM.
+
+        Returns:
+            Provider type: 'master', 'helper', or 'multi'.
+
+        """
+        config_path = self.get_config_path()
+        if not config_path.exists():
+            # No handler YAML = using compiler = master provider
+            return "master"
+        handler_config = self.load_config()
+        return handler_config.provider_type
+
     def get_provider(self) -> BaseProvider:
         """Get the provider instance based on handler config.
 
@@ -467,11 +485,11 @@ class BaseHandler(ABC):
             Provider instance (master, helper, or first multi provider).
 
         """
-        handler_config = self.load_config()
+        provider_type = self._get_provider_type()
 
-        if handler_config.provider_type == "master":
+        if provider_type == "master":
             provider_name = self.config.providers.master.provider
-        elif handler_config.provider_type == "helper":
+        elif provider_type == "helper":
             # Helper provider for benchmarking extraction
             if not self.config.providers.helper:
                 raise ConfigError("Helper provider not configured")
@@ -486,15 +504,15 @@ class BaseHandler(ABC):
 
     def get_model(self) -> str | None:
         """Get the display model name for logging (prefers model_name over model)."""
-        handler_config = self.load_config()
+        provider_type = self._get_provider_type()
 
-        if handler_config.provider_type == "master":
+        if provider_type == "master":
             master = self.config.providers.master
             # Prefer model_name for display (e.g., "glm-4-7")
             if master.model_name:
                 return master.model_name
             return master.model
-        elif handler_config.provider_type == "helper":
+        elif provider_type == "helper":
             helper = self.config.providers.helper
             if helper:
                 if helper.model_name:
@@ -511,11 +529,11 @@ class BaseHandler(ABC):
 
     def get_cli_model(self) -> str | None:
         """Get the CLI model identifier for provider invocation (always returns model, not model_name)."""
-        handler_config = self.load_config()
+        provider_type = self._get_provider_type()
 
-        if handler_config.provider_type == "master":
+        if provider_type == "master":
             return self.config.providers.master.model
-        elif handler_config.provider_type == "helper":
+        elif provider_type == "helper":
             helper = self.config.providers.helper
             return helper.model if helper else None
         else:
@@ -550,13 +568,13 @@ class BaseHandler(ABC):
 
         # Resolve settings file from provider config
         settings_file = None
-        if handler_config := self.load_config():
-            if handler_config.provider_type == "master":
-                settings_file = self.config.providers.master.settings_path
-            elif handler_config.provider_type == "multi" and self.config.providers.multi:
-                settings_file = self.config.providers.multi[0].settings_path
-            elif handler_config.provider_type == "helper" and self.config.providers.helper:
-                settings_file = self.config.providers.helper.settings_path
+        provider_type = self._get_provider_type()
+        if provider_type == "master":
+            settings_file = self.config.providers.master.settings_path
+        elif provider_type == "multi" and self.config.providers.multi:
+            settings_file = self.config.providers.multi[0].settings_path
+        elif provider_type == "helper" and self.config.providers.helper:
+            settings_file = self.config.providers.helper.settings_path
 
         logger.info(
             "Invoking %s provider with model=%s, timeout=%s, cwd=%s",
