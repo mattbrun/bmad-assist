@@ -6,7 +6,7 @@ The index enables evidence-based status inference in the reconciliation engine.
 
 Artifact locations (scanned in order, new location takes precedence):
 1. Legacy: docs/sprint-artifacts/{stories,code-reviews,story-validations,retrospectives}
-2. New: _bmad-output/implementation-artifacts/{stories,code-reviews,story-validations,retrospectives}
+2. New: _bmad-output/implementation-artifacts/{stories,code-reviews,...}
 
 Public API:
     - StoryArtifact: Dataclass for story file metadata
@@ -717,11 +717,7 @@ class ArtifactIndex:
 
         # Try normalized (short) key - search for any match
         short_key = _normalize_story_key(story_key)
-        for full_key in self.story_files:
-            if _normalize_story_key(full_key) == short_key:
-                return True
-
-        return False
+        return any(_normalize_story_key(full_key) == short_key for full_key in self.story_files)
 
     def get_story_artifact(self, story_key: str) -> StoryArtifact | None:
         """Get StoryArtifact for the given key.

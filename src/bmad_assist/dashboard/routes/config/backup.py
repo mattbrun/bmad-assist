@@ -109,10 +109,8 @@ async def get_config_backup_content(request: Request) -> Response:
             editor = await to_thread.run_sync(lambda: utils._create_config_editor(request))
 
             # Get the backup file path
-            if scope == "global":
-                base_path = editor.global_path
-            else:
-                base_path = editor.project_path
+            base_path: Path | None
+            base_path = editor.global_path if scope == "global" else editor.project_path
 
             if base_path is None:
                 return JSONResponse(

@@ -338,13 +338,13 @@ class GeminiProvider(BaseProvider):
                 f"✅ ALLOWED tools ONLY: {allowed_str}\n"
                 f"❌ FORBIDDEN tools (NEVER USE): {restricted_str}\n\n"
                 "**MANDATORY RULES:**\n"
-                "1. Use `Read` to view file contents - NEVER use Bash/run_shell_command for cat/head/tail\n"
-                "2. Use `Glob` to find files by pattern - NEVER use Bash for ls/find commands\n"
-                "3. Use `Grep` to search code content - NEVER use Bash for grep/rg/ag commands\n"
-                "4. You CANNOT modify any files - this is a READ-ONLY code review\n"
-                "5. If you need to see a file, use Read. If you need to find files, use Glob. If you need to search, use Grep.\n"
-                "6. Using run_shell_command/Bash will FAIL - these tools are disabled for reviewers.\n\n"
-                "Your task: Produce a CODE REVIEW REPORT analyzing the implementation. No file modifications allowed.\n"
+                "1. Use `Read` for files - NEVER use Bash for cat/head/tail\n"
+                "2. Use `Glob` for patterns - NEVER use Bash for ls/find\n"
+                "3. Use `Grep` for search - NEVER use Bash for grep/rg\n"
+                "4. You CANNOT modify any files - this is READ-ONLY\n"
+                "5. Need a file? Use Read. Find files? Use Glob. Search? Use Grep.\n"
+                "6. Using run_shell_command/Bash will FAIL for reviewers.\n\n"
+                "Your task: Produce a CODE REVIEW REPORT. No file modifications.\n"
             )
             final_prompt = prompt + restriction_warning
             logger.debug("Added prompt-level tool restriction warning for Gemini CLI")
@@ -489,13 +489,10 @@ class GeminiProvider(BaseProvider):
                                 ):
                                     warned_tools.add(normalized_tool_name)
                                     logger.warning(
-                                        "Gemini CLI: Attempted to use restricted tool '%s' "
-                                        "(normalized='%s', allowed=%s, restricted=%s). "
-                                        "Tool may still execute - this is a prompt-level warning only.",
+                                        "Gemini CLI: Restricted tool '%s' "
+                                        "(norm='%s'). May still execute.",
                                         tool_name,
                                         normalized_tool_name,
-                                        allowed_tools,
-                                        restricted_tools,
                                     )
                                 if print_progress:
                                     tool_params = msg.get("parameters", {})

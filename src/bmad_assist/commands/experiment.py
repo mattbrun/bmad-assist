@@ -131,7 +131,7 @@ def experiment_run(
     qa: bool = typer.Option(
         False,
         "--qa",
-        help="Include Playwright tests (Category B) in QA phases. Without --qa, only safe CLI tests (Category A) run.",
+        help="Include Playwright tests (Category B) in QA. Without --qa, only CLI tests (A) run.",
     ),
     fail_fast: bool = typer.Option(
         False,
@@ -149,7 +149,7 @@ def experiment_run(
         bmad-assist experiment run -f minimal -c opus-solo -P baseline -l standard
         bmad-assist experiment run --fixture complex --config haiku --patch-set experimental -l atdd
         bmad-assist experiment run -f simple-portfolio -c opus-solo -P baseline -l standard --qa
-        bmad-assist experiment run -f simple-portfolio -c opus-solo -P baseline -l standard --fail-fast
+        bmad-assist experiment run -f simple-portfolio -c opus-solo -P baseline --fail-fast
 
     """
     from bmad_assist.experiments import (
@@ -259,9 +259,10 @@ def experiment_run(
 
     console.print(f"  Run ID: {result.run_id}")
     console.print(f"  Duration: {format_duration_cli(result.duration_seconds)}")
-    console.print(
-        f"  Stories: {result.stories_completed}/{result.stories_attempted} completed, {result.stories_failed} failed"
-    )
+    completed = result.stories_completed
+    attempted = result.stories_attempted
+    failed = result.stories_failed
+    console.print(f"  Stories: {completed}/{attempted} completed, {failed} failed")
     if result.retrospective_completed:
         console.print("  Retrospective: [green]completed[/green]")
     if result.qa_completed:
@@ -331,7 +332,7 @@ def experiment_batch(
     patch-set and loop template.
 
     Examples:
-        bmad-assist experiment batch --fixtures minimal,complex --configs opus-solo,haiku --patch-set baseline --loop standard
+        bmad-assist experiment batch -F minimal,complex -C opus-solo,haiku -P baseline -l standard
 
     """
     from bmad_assist.experiments import (
@@ -399,9 +400,8 @@ def experiment_batch(
     combinations = [(f, c) for f in fixture_list for c in config_list]
     total = len(combinations)
 
-    console.print(
-        f"[bold]Batch: {total} experiments ({len(fixture_list)} fixtures × {len(config_list)} configs)[/bold]"
-    )
+    nf, nc = len(fixture_list), len(config_list)
+    console.print(f"[bold]Batch: {total} experiments ({nf} fixtures × {nc} configs)[/bold]")
     console.print()
 
     # Dry run mode
@@ -731,7 +731,7 @@ def experiment_show(
 
 @experiment_app.command("compare")
 def experiment_compare(
-    run_ids: list[str] = typer.Argument(
+    run_ids: list[str] = typer.Argument(  # noqa: B008
         ...,
         help="Run IDs to compare (2-10 required)",
     ),

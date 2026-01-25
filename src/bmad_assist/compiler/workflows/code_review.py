@@ -24,12 +24,12 @@ from bmad_assist.compiler.shared_utils import (
     resolve_story_file,
     safe_read_file,
 )
-from bmad_assist.compiler.strategic_context import StrategicContextService
 from bmad_assist.compiler.source_context import (
     SourceContextService,
     extract_file_paths_from_story,
     get_git_diff_files,
 )
+from bmad_assist.compiler.strategic_context import StrategicContextService
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext, WorkflowIR
 from bmad_assist.compiler.variable_utils import substitute_variables
 from bmad_assist.compiler.variables import resolve_variables
@@ -500,6 +500,11 @@ class CodeReviewCompiler:
         strategic_service = StrategicContextService(context, "code_review")
         strategic_files = strategic_service.collect()
         files.update(strategic_files)
+
+        # 1b. Include code antipatterns - reviewers should know what mistakes to look for
+        from bmad_assist.compiler.strategic_context import load_antipatterns
+
+        files.update(load_antipatterns(context, "code"))
 
         # 2. Git diff (embedded as virtual file, not in variables)
         if git_diff:

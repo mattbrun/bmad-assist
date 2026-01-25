@@ -6,12 +6,9 @@ It only parses arguments and delegates to core/loop.py - no business logic here.
 
 import logging
 import os
-import sys
 from pathlib import Path
-from typing import Any
 
 import typer
-from rich.console import Console
 
 from bmad_assist.bmad import read_project_state
 from bmad_assist.cli_start_point import apply_start_point_override
@@ -37,10 +34,10 @@ from bmad_assist.core.config import (
     load_config_with_project,
 )
 from bmad_assist.core.config_generator import run_config_wizard
-from bmad_assist.core.exceptions import BmadAssistError, ConfigError
+from bmad_assist.core.exceptions import ConfigError
 from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop import LoopExitReason, run_loop
-from bmad_assist.core.loop.interactive import set_non_interactive
+from bmad_assist.core.loop.interactive import set_non_interactive, set_skip_story_prompts
 from bmad_assist.core.paths import init_paths
 from bmad_assist.core.state import Phase, get_state_path, load_state, save_state, update_position
 from bmad_assist.core.types import EpicId, epic_sort_key, parse_epic_id
@@ -261,6 +258,11 @@ def run(
         "-n",
         help="Disable interactive prompts (fail if config missing)",
     ),
+    skip_story_prompts: bool = typer.Option(
+        False,
+        "--skip-story-prompts",
+        help="Skip continuation prompts between stories (but still prompt at epic boundaries)",
+    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -291,24 +293,24 @@ def run(
         None,
         "--epic",
         "-e",
-        help="Start from specified epic (e.g., '22' or 'testarch'). Overrides state.yaml. If --story not specified, starts from first incomplete story.",
+        help="Start from specified epic (e.g., '22' or 'testarch'). Overrides state.yaml.",
     ),
     story: str | None = typer.Option(
         None,
         "--story",
         "-s",
-        help="Start from specified story (e.g., '3' for story 22-3). Requires --epic. Story status determines starting phase.",
+        help="Start from specified story (e.g., '3' for story 22-3). Requires --epic.",
     ),
     force: bool = typer.Option(
         False,
         "--force",
         "-f",
-        help="Force restart if story is already 'done'. Without this flag, prompts to skip to next incomplete story (or auto-skips in --no-interactive mode).",
+        help="Force restart if story is 'done'. Otherwise prompts/auto-skips.",
     ),
     phase_override: str | None = typer.Option(
         None,
         "--phase",
-        help="Override starting phase (requires --epic and --story). Values: create_story, validate_story, validate_story_synthesis, dev_story, code_review, code_review_synthesis, retrospective.",
+        help="Override starting phase. Requires --epic/--story. See docs for values.",
     ),
     qa_enabled: bool = typer.Option(
         False,
@@ -337,6 +339,10 @@ def run(
     # This must be set early, before any interactive prompts can occur
     if no_interactive:
         set_non_interactive(True)
+
+    # Set skip-story-prompts mode if flag is passed
+    if skip_story_prompts:
+        set_skip_story_prompts(True)
 
     # Set environment variables for flags
     if debug_jsonl:
@@ -442,9 +448,8 @@ def run(
 
         # CI-friendly: warn about skipped files
         if setup_result.has_skipped:
-            _warning(
-                f"{len(setup_result.workflows_skipped)} workflow(s) skipped (local differs from bundled)"
-            )
+            skipped_count = len(setup_result.workflows_skipped)
+            _warning(f"{skipped_count} workflow(s) skipped (local differs from bundled)")
             if no_interactive:
                 _info("Run interactively or use 'bmad-assist init --reset-workflows' to update")
 
@@ -475,9 +480,8 @@ def run(
                     output_path = project_paths.sprint_status_file
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     write_sprint_status(reconciliation.status, output_path, preserve_comments=True)
-                    _success(
-                        f"Generated sprint-status.yaml with {len(reconciliation.status.entries)} entries"
-                    )
+                    entry_count = len(reconciliation.status.entries)
+                    _success(f"Generated sprint-status.yaml with {entry_count} entries")
                     console.print(f"  Output: {output_path}")
                     # Re-find the sprint path now that it exists
                     sprint_path = project_paths.find_sprint_status()
@@ -542,7 +546,7 @@ def run(
             except ValueError:
                 valid_phases = [p.value for p in Phase]
                 _error(f"Invalid phase '{phase_override}'. Valid values: {', '.join(valid_phases)}")
-                raise typer.Exit(code=EXIT_CONFIG_ERROR)
+                raise typer.Exit(code=EXIT_CONFIG_ERROR) from None
 
             state_path = get_state_path(loaded_config, project_root=project_path)
             state = load_state(state_path)
@@ -595,9 +599,9 @@ def run(
 # Register commands from commands/ modules
 # ============================================================================
 
-from bmad_assist.commands.compile import compile_command
-from bmad_assist.commands.init import init_command
-from bmad_assist.commands.serve import serve_command
+from bmad_assist.commands.compile import compile_command  # noqa: E402
+from bmad_assist.commands.init import init_command  # noqa: E402
+from bmad_assist.commands.serve import serve_command  # noqa: E402
 
 # Register standalone commands
 app.command(name="compile")(compile_command)
@@ -605,11 +609,11 @@ app.command(name="serve")(serve_command)
 app.command(name="init")(init_command)
 
 # Register sub-apps (command groups)
-from bmad_assist.commands.benchmark import benchmark_app
-from bmad_assist.commands.experiment import experiment_app
-from bmad_assist.commands.patch import patch_app
-from bmad_assist.commands.qa import qa_app
-from bmad_assist.commands.sprint import sprint_app
+from bmad_assist.commands.benchmark import benchmark_app  # noqa: E402
+from bmad_assist.commands.experiment import experiment_app  # noqa: E402
+from bmad_assist.commands.patch import patch_app  # noqa: E402
+from bmad_assist.commands.qa import qa_app  # noqa: E402
+from bmad_assist.commands.sprint import sprint_app  # noqa: E402
 
 app.add_typer(patch_app, name="patch")
 app.add_typer(benchmark_app, name="benchmark")

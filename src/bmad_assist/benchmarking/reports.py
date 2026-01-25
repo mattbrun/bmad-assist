@@ -440,7 +440,7 @@ def _aggregate_variant_metrics(
 def _check_scipy_available() -> bool:
     """Check if scipy is available for statistical testing."""
     try:
-        from scipy.stats import ttest_ind  # type: ignore[import-untyped]  # noqa: F401
+        from scipy.stats import ttest_ind  # noqa: F401
 
         return True
     except ImportError:

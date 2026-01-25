@@ -113,7 +113,6 @@ def _extract_story_test_context(story_content: str, story_name: str) -> str:
     result_lines = [f"### {story_name}"]
 
     in_section = False
-    current_section = ""
 
     # Sections we want to extract
     test_sections = {
@@ -137,7 +136,6 @@ def _extract_story_test_context(story_content: str, story_name: str) -> str:
             # Check if this is a section we want
             in_section = any(kw in header_text for kw in test_sections)
             if in_section:
-                current_section = header_text
                 result_lines.append(line)
         elif in_section or any(
             kw in stripped
@@ -335,7 +333,7 @@ The following `data-testid` selectors are the ONLY valid selectors for UI tests.
 **DO NOT INVENT:**
 - NEVER invent data-testid selectors not listed above
 - NEVER use `aria-selected`, `aria-checked` or similar ARIA attributes (not present in UI)
-- NEVER use class names like `active`, `selected`, `enabled` (UI uses Tailwind CSS, not semantic classes)
+- NEVER use class names like `active`, `selected` (UI uses Tailwind, not semantic)
 - NEVER guess option values for select/dropdown elements
 
 **UI TECHNOLOGY:**

@@ -207,7 +207,7 @@ def parse_workflow(workflow_dir: Path) -> WorkflowIR:
         raise ParserError(
             f"instructions file not found: {instructions_path}\n"
             f"  Why it's needed: Contains workflow execution steps and actions\n"
-            f"  How to fix: Ensure the workflow directory contains instructions.xml or instructions.md"
+            f"  How to fix: Ensure the workflow directory contains instructions.xml or instructions.md" # noqa: E501
         )
 
     # Parse instructions

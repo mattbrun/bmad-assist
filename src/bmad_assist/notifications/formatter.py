@@ -28,12 +28,10 @@ from typing import TYPE_CHECKING
 from .events import (
     AnomalyDetectedPayload,
     CLICrashedPayload,
-    EpicCompletedPayload,
     ErrorOccurredPayload,
     EventPayload,
     EventType,
     FatalErrorPayload,
-    ProjectCompletedPayload,
     QueueBlockedPayload,
     StoryCompletedPayload,
     TimeoutWarningPayload,

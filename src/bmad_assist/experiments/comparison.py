@@ -259,10 +259,7 @@ def _determine_winner(
         return None
 
     # Find best value
-    if lower_is_better:
-        best_value = min(valid.values())
-    else:
-        best_value = max(valid.values())
+    best_value = min(valid.values()) if lower_is_better else max(valid.values())
 
     # Find run(s) with best value
     winners = [k for k, v in valid.items() if v == best_value]

@@ -226,7 +226,7 @@ def safe_read_file(path: Path, project_root: Path | None = None) -> str:
             resolved_root = project_root.resolve()
             is_in_project = resolved.is_relative_to(resolved_root)
             # Allow bundled workflows (installed in bmad_assist/workflows/)
-            is_bundled = "bmad_assist/workflows" in str(resolved) or "bmad_assist\\workflows" in str(resolved)
+            is_bundled = "bmad_assist/workflows" in str(resolved) or "bmad_assist\\workflows" in str(resolved) # noqa: E501
             if not is_in_project and not is_bundled:
                 logger.warning("Path outside project root, skipping: %s", path)
                 return ""
@@ -505,7 +505,7 @@ def load_workflow_template(
         is_in_project = resolved_template.is_relative_to(resolved_root)
 
         # Allow bundled workflows (installed in bmad_assist/workflows/)
-        is_bundled = "bmad_assist/workflows" in str(resolved_template) or "bmad_assist\\workflows" in str(resolved_template)
+        is_bundled = "bmad_assist/workflows" in str(resolved_template) or "bmad_assist\\workflows" in str(resolved_template) # noqa: E501
 
         if not is_in_project and not is_bundled:
             raise CompilerError(

@@ -23,7 +23,6 @@ from bmad_assist.code_review.orchestrator import (
     run_code_review_phase,
     save_reviews_for_synthesis,
 )
-from bmad_assist.core.config import get_phase_timeout
 from bmad_assist.core.loop.handlers.base import BaseHandler
 from bmad_assist.core.loop.types import PhaseResult
 from bmad_assist.core.state import State
@@ -77,7 +76,6 @@ class CodeReviewHandler(BaseHandler):
 
         """
         from bmad_assist.benchmarking.storage import get_benchmark_base_dir, save_evaluation_record
-        from bmad_assist.core.loop.interactive import get_debugger
 
         try:
             # Extract story info
@@ -143,23 +141,6 @@ class CodeReviewHandler(BaseHandler):
             outputs["evaluation_records_saved"] = len(result.evaluation_records)
 
             phase_result = PhaseResult.ok(outputs)
-
-            # Interactive debug mode check
-            debugger = get_debugger()
-            if debugger.is_enabled:
-                result_summary = (
-                    f"CODE REVIEW COMPLETE - {result.review_count} reviewers, "
-                    f"session: {result.session_id[:8]}..."
-                )
-                continue_execution = debugger.run_debug_loop(
-                    phase_name=self.phase_name,
-                    result_summary=result_summary,
-                    provider=self.get_provider(),
-                    model=self.get_model(),
-                    timeout=get_phase_timeout(self.config, self.phase_name),
-                )
-                if not continue_execution:
-                    return PhaseResult.fail("User interrupted execution")
 
             return phase_result
 

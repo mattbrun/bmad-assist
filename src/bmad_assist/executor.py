@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from bmad_assist.compiler import CompilerContext, compile_workflow
 from bmad_assist.core.config import Config
@@ -99,7 +100,7 @@ def _compile_qa_execute_prompt(
     return compiled.context
 
 
-def _parse_execution_results(output: str) -> dict:
+def _parse_execution_results(output: str) -> dict[str, Any]:
     """Parse test execution results from LLM output.
 
     Extracts test counts and status from the execution output.

@@ -69,6 +69,7 @@ from bmad_assist.validation.benchmarking_integration import (
 if TYPE_CHECKING:
     from bmad_assist.benchmarking import LLMEvaluationRecord
     from bmad_assist.validation.anonymizer import AnonymizationMapping
+    from bmad_assist.validation.evidence_score import EvidenceScoreAggregate
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,6 @@ def _calculate_evidence_aggregate(
     """
     try:
         from bmad_assist.validation.evidence_score import (
-            EvidenceScoreAggregate,
             aggregate_evidence_scores,
             parse_evidence_findings,
         )
@@ -833,6 +833,7 @@ def _save_code_review_report(
         story: Story number.
         reviews_dir: Path to code-reviews directory.
         role_id: Index-based role ID (a, b, c...) for filename.
+        session_id: Anonymization session ID for correlation.
         anonymized_id: Anonymous reviewer ID (e.g., "Validator A") for
             frontmatter display.
 
@@ -843,7 +844,7 @@ def _save_code_review_report(
         OSError: If write fails (logged by caller).
 
     """
-    import frontmatter  # type: ignore[import-untyped]
+    import frontmatter
 
     timestamp = output.timestamp
     from bmad_assist.core.io import get_timestamp
@@ -970,7 +971,7 @@ def save_reviews_for_synthesis(
 
     """
     from bmad_assist.core.io import atomic_write
-    from bmad_assist.validation.evidence_score import EvidenceScoreAggregate, Severity
+    from bmad_assist.validation.evidence_score import Severity
 
     if session_id is None:
         session_id = str(uuid.uuid4())

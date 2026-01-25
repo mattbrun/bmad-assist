@@ -98,6 +98,7 @@ class CacheVersionError(EvidenceScoreError):
         required_version: int = 2,
         message: str | None = None,
     ) -> None:
+        """Initialize cache version error with version details."""
         self.found_version = found_version
         self.required_version = required_version
         if message is None:
@@ -721,7 +722,7 @@ def format_evidence_score_context(
     lines.extend(
         [
             "",
-            "**IMPORTANT:** Use the above pre-calculated Evidence Score and Verdict in your synthesis.",
+            "**IMPORTANT:** Use the above pre-calculated Evidence Score and Verdict in your synthesis.", # noqa: E501
             "These values are deterministically computed - DO NOT recalculate.",
             "<!-- END PRE-CALCULATED EVIDENCE SCORE -->",
         ]

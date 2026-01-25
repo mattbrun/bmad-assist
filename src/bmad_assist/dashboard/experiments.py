@@ -795,10 +795,10 @@ def manifest_to_details(manifest: RunManifest) -> ExperimentRunDetails:
             "patches": dict(p.patches) if p.patches else {},
         }
 
-    def _resolve_loop(l: Any) -> dict[str, Any]:
-        if l is None:
+    def _resolve_loop(loop_obj: Any) -> dict[str, Any]:
+        if loop_obj is None:
             return {"name": None, "source": None, "sequence": []}
-        return {"name": l.name, "source": l.source, "sequence": list(l.sequence)}
+        return {"name": loop_obj.name, "source": loop_obj.source, "sequence": list(loop_obj.sequence)} # noqa: E501
 
     resolved = ResolvedDetails(
         fixture=_resolve_fixture(manifest.resolved.fixture if manifest.resolved else None),
@@ -1106,6 +1106,7 @@ class TemplateStats:
     __slots__ = ("run_count", "last_run", "recent_runs")
 
     def __init__(self) -> None:
+        """Initialize empty template statistics."""
         self.run_count: int = 0
         self.last_run: datetime | None = None
         self.recent_runs: list[TemplateRunInfo] = []
@@ -1329,9 +1330,9 @@ def _get_template_run_stats(
     input_field: str,
     secondary_field: str = "fixture",
 ) -> dict[str, TemplateStats]:
-    """Generic function to calculate run statistics for any template type.
+    """Calculate run statistics for any template type.
 
-    Uses O(N+M) algorithm with lookup map.
+    Use O(N+M) algorithm with lookup map.
 
     Args:
         template_names: List of template names.
@@ -1469,7 +1470,7 @@ def _read_yaml_content_sync(source_path: str) -> str | None:
         content = path.read_text(encoding="utf-8")
         if len(content) > MAX_YAML_CONTENT_SIZE:
             truncated = content[: 95 * 1024]  # First 95KB
-            return f"# Content truncated (exceeds {MAX_YAML_CONTENT_SIZE // 1024}KB limit)\n{truncated}"
+            return f"# Content truncated (exceeds {MAX_YAML_CONTENT_SIZE // 1024}KB limit)\n{truncated}" # noqa: E501
         return content
     except (OSError, UnicodeDecodeError) as e:
         logger.warning("Failed to read YAML content from %s: %s", source_path, e)

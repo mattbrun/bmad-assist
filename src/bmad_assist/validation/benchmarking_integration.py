@@ -283,7 +283,7 @@ def _create_workflow_info(
 
 def _create_story_info(
     epic_num: EpicId,
-    story_num: int,
+    story_num: int | str,
     title: str,
     complexity_flags: dict[str, bool],
 ) -> StoryInfo:
@@ -413,7 +413,7 @@ async def _run_parallel_extraction(
     deterministic_results: list[DeterministicMetrics],
     project_root: Path,
     epic_num: EpicId,
-    story_num: int,
+    story_num: int | str,
     run_timestamp: datetime,
     timeout: int,
     config: Config | None = None,
@@ -444,7 +444,8 @@ async def _run_parallel_extraction(
         extraction_provider = config.providers.helper.provider
         # Prefer model_name (e.g., "glm-4.5-air") over model (e.g., "haiku")
         extraction_model = config.providers.helper.model_name or config.providers.helper.model
-        extraction_settings_file = config.providers.helper.settings_path
+        settings_path = config.providers.helper.settings_path
+        extraction_settings_file = str(settings_path) if settings_path else None
 
     for output in successful_outputs:
         context = ExtractionContext(

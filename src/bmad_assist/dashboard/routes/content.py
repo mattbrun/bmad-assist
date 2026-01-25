@@ -139,6 +139,7 @@ async def get_story_content(request: Request) -> Response:
     Returns:
         JSON with content, file_path, and title on success.
         404 JSON error if story file not found.
+
     """
     server = request.app.state.server
 
@@ -182,6 +183,7 @@ async def get_reviewer_mapping(request: Request) -> Response:
         }
 
         Returns 404 if no mapping found.
+
     """
     server = request.app.state.server
 

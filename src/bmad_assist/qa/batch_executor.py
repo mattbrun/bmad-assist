@@ -331,7 +331,8 @@ This is batch {batch_id} of {total_batches}. Execute these {len(tests)} tests an
 - NEVER read task output files larger than 8000 chars
 
 **Bash tool output handling:**
-- Bash tool stdout/stderr can overflow context - truncate with `| head -c 8000` if command produces large output
+- Bash tool stdout/stderr can overflow context
+- Truncate with `| head -c 8000` if command produces large output
 - This does NOT apply to YOUR responses - always report full test results and summaries
 
 ## Execution Instructions
@@ -580,7 +581,7 @@ def _execute_playwright_category(
     config: Config,
     project_path: Path,
     epic_id: EpicId,
-    tests: list,
+    tests: list[Any],
 ) -> ExecutionState:
     """Execute Category B tests using Playwright directly.
 

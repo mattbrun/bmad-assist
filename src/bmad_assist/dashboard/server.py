@@ -29,10 +29,10 @@ from starlette.routing import BaseRoute, Mount
 from starlette.staticfiles import StaticFiles
 
 from bmad_assist.core.exceptions import DashboardError
-from bmad_assist.core.state import State, get_state_path, load_state
 
 # Story 22.9: Dashboard event marker for stdout parsing
 from bmad_assist.core.loop.dashboard_events import DASHBOARD_EVENT_MARKER
+from bmad_assist.core.state import State, get_state_path, load_state
 from bmad_assist.dashboard.routes import API_ROUTES
 from bmad_assist.dashboard.sse import SSEBroadcaster
 
@@ -196,7 +196,7 @@ class DashboardServer:
 
         self.sse_broadcaster = SSEBroadcaster()
         self._app: Starlette | None = None
-        self._server = None
+        self._server: Any = None
         self._shutdown_event = asyncio.Event()
         self._loop_running = False
         self._pause_requested = False  # Pause after current workflow completes
@@ -544,10 +544,7 @@ class DashboardServer:
         await self.sse_broadcaster.broadcast_output("🏁 Loop ended", provider="dashboard")
 
     async def _run_bmad_assist_loop(self) -> None:
-        """Deprecated: Use _run_workflow_loop() instead.
-
-        Kept for backwards compatibility during transition.
-        """
+        """Run workflow loop (deprecated, use _run_workflow_loop instead)."""
         await self._run_workflow_loop()
 
     async def _cancel_process(self) -> None:
@@ -1130,15 +1127,17 @@ class DashboardServer:
             # Pattern 2: ### Story {epic}.{story} {title}
             # Pattern 3: ### {story}. {title} (if epic context is implicit)
             # Pattern 4: ## Story {epic}.{story}: {title} (some epics use level 2)
+            # Build patterns using escaped IDs
+            eid, sid = re.escape(epic_id_str), re.escape(story_id_str)
             patterns = [
-                rf"^###\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}\s*:",  # Story 16.1:
-                rf"^###\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}\s+",  # Story 16.1 (with space)
-                rf"^###\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}$",  # Story 16.1 (exact)
-                rf"^##\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}\s*:",  # Story 16.1: (level 2)
-                rf"^##\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}\s+",  # Story 16.1 (level 2, space)
-                rf"^##\s+Story\s+{re.escape(epic_id_str)}\.{re.escape(story_id_str)}$",  # Story 16.1 (level 2, exact)
-                rf"^###\s+{re.escape(story_id_str)}\.",  # 1. (numbered list style)
-                rf"^##\s+{re.escape(story_id_str)}\.",  # 1. (numbered list style, level 2)
+                rf"^###\s+Story\s+{eid}\.{sid}\s*:",  # Story 16.1:
+                rf"^###\s+Story\s+{eid}\.{sid}\s+",  # Story 16.1 (space)
+                rf"^###\s+Story\s+{eid}\.{sid}$",  # Story 16.1 (exact)
+                rf"^##\s+Story\s+{eid}\.{sid}\s*:",  # Level 2 with colon
+                rf"^##\s+Story\s+{eid}\.{sid}\s+",  # Level 2 with space
+                rf"^##\s+Story\s+{eid}\.{sid}$",  # Level 2 exact
+                rf"^###\s+{sid}\.",  # Numbered list style
+                rf"^##\s+{sid}\.",  # Level 2 numbered
             ]
 
             for i, line in enumerate(lines):
@@ -1400,9 +1399,10 @@ class DashboardServer:
                             "duration_ms": 0,
                             "roles": [],
                         }
-                    metrics["stories"][story_key]["workflows"][workflow_id]["duration_ms"] += duration_ms
-                    if role not in metrics["stories"][story_key]["workflows"][workflow_id]["roles"]:
-                        metrics["stories"][story_key]["workflows"][workflow_id]["roles"].append(role)
+                    wf = metrics["stories"][story_key]["workflows"][workflow_id]
+                    wf["duration_ms"] += duration_ms
+                    if role not in wf["roles"]:
+                        wf["roles"].append(role)
 
                 except Exception as e:
                     logger.warning("Failed to parse benchmark file %s: %s", eval_file, e)
@@ -1435,6 +1435,8 @@ class DashboardServer:
         from bmad_assist.sprint import parse_sprint_status
 
         try:
+            if self._sprint_status_path is None:
+                return {"epics": [], "total_stories": 0, "completed_stories": 0}
             sprint_status = parse_sprint_status(self._sprint_status_path)
 
             # Group stories by epic
@@ -1445,14 +1447,15 @@ class DashboardServer:
                 # Skip non-story entries (epic meta entries)
                 if entry.entry_type.value in ("epic_meta",):
                     # Extract epic number from key like "epic-1"
-                    epic_num_str = key.replace("epic-", "")
+                    meta_epic_str = key.replace("epic-", "")
+                    meta_epic_num: int | str
                     try:
-                        epic_num = int(epic_num_str)
+                        meta_epic_num = int(meta_epic_str)
                     except ValueError:
-                        epic_num = epic_num_str
-                    epic_meta[epic_num] = {
-                        "id": epic_num,
-                        "title": f"Epic {epic_num_str}",
+                        meta_epic_num = meta_epic_str
+                    epic_meta[meta_epic_num] = {
+                        "id": meta_epic_num,
+                        "title": f"Epic {meta_epic_str}",
                         "status": entry.status,
                     }
                     continue
@@ -1467,6 +1470,7 @@ class DashboardServer:
                 slug = parts[2] if len(parts) > 2 else ""
 
                 # Convert epic num to int if possible
+                epic_num: int | str
                 try:
                     epic_num = int(epic_num_str)
                 except ValueError:
@@ -1631,7 +1635,7 @@ class DashboardServer:
         # Try new location first: .bmad-assist/prompts/{epic}-{story}-{phase}.xml
         try:
             prompt_path = get_prompt_path(self.project_root, epic, story, phase)
-            if prompt_path.exists():
+            if prompt_path is not None and prompt_path.exists():
                 return prompt_path
         except Exception:
             pass  # Fall through to legacy cache
@@ -1805,7 +1809,8 @@ class DashboardServer:
 
         """
         # Pattern: code-review-{epic}-{story}-{provider}-{timestamp}.md
-        match = re.match(r"code-review-[a-z0-9]+-[a-z0-9]+-(.+)-\d{8}_\d{4}\.md", filename, re.IGNORECASE)
+        pattern = r"code-review-[a-z0-9]+-[a-z0-9]+-(.+)-\d{8}_\d{4}\.md"
+        match = re.match(pattern, filename, re.IGNORECASE)
         return match.group(1) if match else None
 
     def get_all_reviews(self, epic: str, story: str) -> dict[str, Any]:

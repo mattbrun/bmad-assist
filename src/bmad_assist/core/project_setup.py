@@ -89,6 +89,7 @@ def _validate_path_safe(base_path: Path, target_path: Path) -> bool:
 
     Returns:
         True if target_path is safely within base_path.
+
     """
     try:
         base_resolved = base_path.resolve()
@@ -110,6 +111,7 @@ def _compare_files(file1: Path, file2: Path) -> bool:
 
     Returns:
         True if files have identical content (after normalization).
+
     """
     # Don't compare symlinks - always treat as different
     if file1.is_symlink() or file2.is_symlink():
@@ -131,6 +133,7 @@ def _show_diff(src: Path, dst: Path, console: Console) -> None:
         src: Source (bundled) file.
         dst: Destination (local) file.
         console: Rich console for output.
+
     """
     try:
         src_lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -188,6 +191,7 @@ def _prompt_overwrite_batch(
 
     Returns:
         User's decision for handling differing files.
+
     """
     if not sys.stdin.isatty():
         console.print("[yellow]Non-interactive mode: skipping differing files[/yellow]")
@@ -195,9 +199,9 @@ def _prompt_overwrite_batch(
 
     count = len(differing_files)
     console.print(f"\n[yellow]{count} workflow file(s) differ from bundled version:[/yellow]")
-    for src, dst in differing_files[:5]:  # Show first 5
+    for _src, dst in differing_files[:5]:  # Show first 5
         try:
-            rel_path = dst.relative_to(dst.parent.parent.parent.parent)
+            rel_path: Path | str = dst.relative_to(dst.parent.parent.parent.parent)
         except ValueError:
             rel_path = dst.name
         console.print(f"  - {rel_path}")
@@ -217,7 +221,7 @@ def _prompt_overwrite_batch(
             # Show diff for first file, then re-prompt
             src, dst = differing_files[0]
             if len(differing_files) > 1:
-                console.print(f"[dim](Showing first of {len(differing_files)} files. Use [i] for per-file diffs.)[/dim]")
+                console.print(f"[dim](Showing first of {len(differing_files)} files. Use [i] for per-file diffs.)[/dim]") # noqa: E501
             _show_diff(src, dst, console)
             continue
         return OverwriteDecision(choice)
@@ -237,9 +241,10 @@ def _prompt_overwrite_single(
 
     Returns:
         True if user wants to overwrite, False to skip.
+
     """
     try:
-        rel_path = dst.relative_to(dst.parent.parent.parent.parent)
+        rel_path: Path | str = dst.relative_to(dst.parent.parent.parent.parent)
     except ValueError:
         rel_path = dst.name
 
@@ -269,6 +274,7 @@ def _atomic_copy_file(src: Path, dst: Path) -> None:
 
     Raises:
         SetupError: If copy fails or source is a symlink.
+
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
     temp_path = dst.with_suffix(dst.suffix + ".tmp")
@@ -304,6 +310,7 @@ def _copy_workflow_tree(src_dir: Path, dst_dir: Path, _is_root: bool = True) -> 
 
     Raises:
         SetupError: If any copy operation fails. Cleans up partial copy.
+
     """
     import shutil
 
@@ -336,6 +343,7 @@ def _workflow_dirs_identical(src_dir: Path, dst_dir: Path) -> bool:
 
     Returns:
         True if all files are identical.
+
     """
     if not dst_dir.exists():
         return False
@@ -368,6 +376,7 @@ def _collect_differing_files(
 
     Returns:
         List of (src_file, dst_file) tuples for differing files.
+
     """
     differing = []
 
@@ -393,6 +402,7 @@ def _create_bmad_config(project_path: Path, console: Console) -> bool:
 
     Returns:
         True if config was created, False if already exists.
+
     """
     config_dir = project_path / "_bmad" / "bmm"
     config_file = config_dir / "config.yaml"
@@ -418,6 +428,7 @@ def check_gitignore_warning(
         project_path: Project root directory.
         config: Loaded config (may be None).
         console: Rich console for output.
+
     """
     if config and config.warnings and config.warnings.suppress_gitignore:
         return  # Suppressed
@@ -448,6 +459,7 @@ def copy_bundled_workflows(
 
     Returns:
         CopyResult with lists of copied, skipped, and unchanged workflows.
+
     """
     from bmad_assist.workflows import get_bundled_workflow_dir, list_bundled_workflows
 
@@ -519,7 +531,7 @@ def copy_bundled_workflows(
                         result.skipped.append(name)
                 elif decision == OverwriteDecision.INTERACTIVE:
                     # Interactive mode - prompt per file
-                    for name, src_dir, dst_dir in differing_workflows:
+                    for name, _src_dir, _dst_dir in differing_workflows:
                         files = workflow_files_map.get(name, [])
                         all_overwritten = True
                         for src_file, dst_file in files:
@@ -555,6 +567,7 @@ def ensure_project_setup(
 
     Returns:
         SetupResult with status and details.
+
     """
     from bmad_assist.git import setup_gitignore
 

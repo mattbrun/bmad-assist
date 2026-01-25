@@ -98,7 +98,7 @@ async def get_loop_status(request: Request) -> JSONResponse:
 
     # Also check lock file for external runs
     if not running:
-        from bmad_assist.core.loop.runner import _is_pid_alive, _read_lock_file
+        from bmad_assist.core.loop.locking import _is_pid_alive, _read_lock_file
 
         lock_path = server.project_root / ".bmad-assist" / "running.lock"
         if lock_path.exists():

@@ -884,8 +884,8 @@ class TestReloadConfig:
         current["timeout"] = 12345
         full_global_config_file.write_text(yaml.dump(current))
 
-        # Reload with patched path
-        with patch("bmad_assist.core.config.GLOBAL_CONFIG_PATH", full_global_config_file):
+        # Reload with patched path (patch where it's used, in loaders module)
+        with patch("bmad_assist.core.config.loaders.GLOBAL_CONFIG_PATH", full_global_config_file):
             config2 = reload_config()
 
         assert config2.timeout == 12345
@@ -895,7 +895,7 @@ class TestReloadConfig:
         """reload_config returns the new Config instance."""
         load_global_config(full_global_config_file)
 
-        with patch("bmad_assist.core.config.GLOBAL_CONFIG_PATH", full_global_config_file):
+        with patch("bmad_assist.core.config.loaders.GLOBAL_CONFIG_PATH", full_global_config_file):
             result = reload_config()
 
         assert result is get_config()
@@ -910,7 +910,7 @@ class TestReloadConfig:
         project_config = project_dir / "bmad-assist.yaml"
         project_config.write_text("timeout: 7777\n")
 
-        with patch("bmad_assist.core.config.GLOBAL_CONFIG_PATH", full_global_config_file):
+        with patch("bmad_assist.core.config.loaders.GLOBAL_CONFIG_PATH", full_global_config_file):
             config = reload_config(project_path=project_dir)
 
         assert config.timeout == 7777

@@ -1,5 +1,7 @@
 """Abstract base class and data structures for CLI provider implementations.
 
+NOTE: Uses `from __future__ import annotations` for forward references to ExitStatus.
+
 This module defines the contract that all CLI providers (Claude Code, Codex,
 Gemini CLI) must implement. The BaseProvider ABC enables the adapter pattern
 for extensible provider support per NFR7.
@@ -41,6 +43,7 @@ import contextlib
 import logging
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -101,6 +104,140 @@ PROVIDER_COLORS: tuple[str, ...] = (
     "\033[97m",  # Bright White
 )
 RESET_COLOR = "\033[0m"
+
+# =============================================================================
+# Retry Constants and Helpers (shared by copilot.py, cursor_agent.py)
+# =============================================================================
+
+MAX_RETRIES: int = 5
+RETRY_BASE_DELAY: float = 2.0
+RETRY_MAX_DELAY: float = 30.0
+
+# Transient error patterns (case-insensitive substrings in stderr)
+TRANSIENT_ERROR_PATTERNS: tuple[str, ...] = (
+    "connection reset",
+    "connection refused",
+    "connection timed out",
+    "rate limit",
+    "429",
+    "503",
+    "502",
+    "504",
+    "temporarily unavailable",
+    "service unavailable",
+    "timeout",
+    "timed out",
+    "etimedout",
+    "econnreset",
+)
+
+
+def calculate_retry_delay(attempt: int) -> float:
+    """Calculate exponential backoff delay capped at MAX_DELAY.
+
+    Args:
+        attempt: Zero-based attempt number (0 = first retry after initial failure).
+
+    Returns:
+        Delay in seconds: min(RETRY_BASE_DELAY * 2^attempt, RETRY_MAX_DELAY)
+
+    Example:
+        >>> calculate_retry_delay(0)
+        2.0
+        >>> calculate_retry_delay(3)
+        16.0
+        >>> calculate_retry_delay(10)
+        30.0
+
+    """
+    return float(min(RETRY_BASE_DELAY * (2**attempt), RETRY_MAX_DELAY))
+
+
+def is_transient_error(stderr: str, exit_status: "ExitStatus") -> bool:
+    """Check if error is transient and suitable for retry.
+
+    Returns True if:
+    - stderr contains known transient error patterns (network, rate limit, timeout), OR
+    - stderr is empty AND exit_status is ERROR (legacy behavior for generic failures)
+
+    Args:
+        stderr: Standard error output from the failed command.
+        exit_status: Classified exit status from ExitStatus.from_code().
+
+    Returns:
+        True if the error appears transient and retry is appropriate.
+
+    """
+    stderr_lower = stderr.lower()
+
+    # Check for known transient patterns in stderr
+    for pattern in TRANSIENT_ERROR_PATTERNS:
+        if pattern in stderr_lower:
+            return True
+
+    # Legacy: empty stderr + generic error = transient
+    return not stderr.strip() and exit_status == ExitStatus.ERROR
+
+
+def read_stream_lines(
+    stream: Any,
+    chunks: list[str],
+    callback: Callable[[str], None] | None = None,
+) -> None:
+    """Read lines from stream, accumulating in chunks and optionally calling callback.
+
+    Generic stream reader for concurrent stdout/stderr processing.
+    Thread-safe when used with separate chunk lists per stream.
+
+    Args:
+        stream: File-like object with readline() method (e.g., process.stdout).
+        chunks: List to append each line to.
+        callback: Optional function called with each line (for progress display).
+
+    """
+    for line in iter(stream.readline, ""):
+        chunks.append(line)
+        if callback is not None:
+            callback(line)
+    stream.close()
+
+
+def start_stream_reader_threads(
+    process: Any,
+    stdout_chunks: list[str],
+    stderr_chunks: list[str],
+    stdout_callback: Callable[[str], None] | None = None,
+    stderr_callback: Callable[[str], None] | None = None,
+) -> tuple[threading.Thread, threading.Thread]:
+    """Start threads for concurrent stdout/stderr reading.
+
+    Creates and starts two daemon threads that read from process.stdout
+    and process.stderr respectively, accumulating lines into the provided
+    chunk lists.
+
+    Args:
+        process: Popen process with stdout and stderr pipes.
+        stdout_chunks: List to accumulate stdout lines.
+        stderr_chunks: List to accumulate stderr lines.
+        stdout_callback: Optional callback for each stdout line.
+        stderr_callback: Optional callback for each stderr line.
+
+    Returns:
+        Tuple of (stdout_thread, stderr_thread). Caller should join() these
+        after process.wait() completes.
+
+    """
+    stdout_thread = threading.Thread(
+        target=read_stream_lines,
+        args=(process.stdout, stdout_chunks, stdout_callback),
+    )
+    stderr_thread = threading.Thread(
+        target=read_stream_lines,
+        args=(process.stderr, stderr_chunks, stderr_callback),
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    return stdout_thread, stderr_thread
 
 
 def format_tag(tag: str, color_index: int | None) -> str:

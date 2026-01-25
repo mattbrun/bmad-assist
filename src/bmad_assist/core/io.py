@@ -98,7 +98,8 @@ def _increment_prompt_counter() -> int:
     """
     current = _get_prompt_counter()
     _run_context.prompt_counter = current + 1
-    return _run_context.prompt_counter
+    counter: int = _run_context.prompt_counter
+    return counter
 
 
 def _get_phase_sequence(phase_name: str) -> int:

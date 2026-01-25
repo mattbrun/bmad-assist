@@ -379,7 +379,7 @@ class LoopRegistry:
 
         return self._load_template(name)
 
-    @lru_cache(maxsize=32)
+    @lru_cache(maxsize=32)  # noqa: B019
     def _load_template(self, name: str) -> LoopTemplate:
         """Load a template with caching.
 

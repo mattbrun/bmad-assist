@@ -237,7 +237,8 @@ class TestSprintRepair:
     ) -> None:
         """Test repair applies evidence-based inference."""
         result = cli_runner.invoke(
-            app, ["sprint", "repair", "--project", str(project_with_artifacts)]
+            app, ["sprint", "repair", "--project", str(project_with_artifacts)],
+            input="y\n",  # Confirm the overwrite prompt
         )
 
         assert result.exit_code == EXIT_SUCCESS, result.output
@@ -271,7 +272,8 @@ class TestSprintRepair:
     ) -> None:
         """Test repair --verbose shows divergence details."""
         result = cli_runner.invoke(
-            app, ["sprint", "repair", "--project", str(project_with_artifacts), "--verbose"]
+            app, ["sprint", "repair", "--project", str(project_with_artifacts), "--verbose"],
+            input="y\n",  # Confirm the overwrite prompt
         )
 
         assert result.exit_code == EXIT_SUCCESS, result.output

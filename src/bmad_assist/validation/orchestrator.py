@@ -685,7 +685,7 @@ async def run_validation_phase(
             # Map deterministic metrics by provider index to handle partial extraction
             # Zip without strict to allow different list lengths when some metrics failed
             for idx, (output, deterministic, extracted) in enumerate(
-                zip(successful_outputs, successful_deterministic, extracted_list)
+                zip(successful_outputs, successful_deterministic, extracted_list, strict=False)
             ):
                 # AC6: Skip if extraction failed (partial results discarded)
                 if extracted is None:
@@ -786,7 +786,7 @@ def save_validations_for_synthesis(
 
     """
     # Import here to avoid circular dependency
-    from bmad_assist.validation.evidence_score import EvidenceScoreAggregate, Severity
+    from bmad_assist.validation.evidence_score import Severity
 
     if session_id is None:
         session_id = str(uuid.uuid4())
@@ -878,7 +878,7 @@ def load_validations_for_synthesis(
 
     """
     # Import here to avoid circular dependency
-    from bmad_assist.validation.evidence_score import CacheFormatError, CacheVersionError
+    from bmad_assist.validation.evidence_score import CacheVersionError
 
     cache_dir = project_root / ".bmad-assist" / "cache"
     file_path = cache_dir / f"validations-{session_id}.json"

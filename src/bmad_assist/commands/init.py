@@ -4,6 +4,7 @@ Initializes a project for bmad-assist usage.
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -15,8 +16,11 @@ from bmad_assist.cli_utils import (
     console,
 )
 
+if TYPE_CHECKING:
+    from rich.console import Console
 
-def _validate_bundled_workflows(console_obj: "rich.console.Console") -> None:  # type: ignore[name-defined]
+
+def _validate_bundled_workflows(console_obj: "Console") -> None:
     """Validate bundled workflows are properly installed."""
     from bmad_assist.workflows import list_bundled_workflows
 
@@ -100,7 +104,7 @@ def init_command(
 
     # Confirm destructive reset operation
     if reset_workflows:
-        console.print("[yellow]⚠️  WARNING: --reset-workflows will overwrite ALL local workflow customizations![/yellow]")
+        console.print("[yellow]⚠️  WARNING: --reset-workflows will overwrite ALL local workflow customizations![/yellow]") # noqa: E501
         if not Confirm.ask("Continue?", default=False):
             console.print("[dim]Cancelled.[/dim]")
             raise typer.Exit(code=0)
@@ -149,7 +153,7 @@ def init_command(
 
     # Summary
     console.print()
-    if result.workflows_copied or result.config_created or result.gitignore_updated or result.dirs_created:
+    if result.workflows_copied or result.config_created or result.gitignore_updated or result.dirs_created: # noqa: E501
         _success("Project initialized successfully")
         if result.workflows_copied:
             console.print(f"  Workflows copied: {len(result.workflows_copied)}")
@@ -158,6 +162,6 @@ def init_command(
 
     # Exit with warning code if workflows were skipped
     if result.has_skipped:
-        console.print(f"\n[yellow]⚠️  {len(result.workflows_skipped)} workflow(s) skipped (local differs from bundled)[/yellow]")
+        console.print(f"\n[yellow]⚠️  {len(result.workflows_skipped)} workflow(s) skipped (local differs from bundled)[/yellow]") # noqa: E501
         console.print("[yellow]   Use --reset-workflows to restore bundled versions[/yellow]")
         raise typer.Exit(code=EXIT_WARNING)

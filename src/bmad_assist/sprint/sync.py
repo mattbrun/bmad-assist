@@ -504,7 +504,7 @@ def trigger_sync(state: State, project_root: Path) -> SyncResult:
         # Fallback for tests or early startup when singleton not initialized
         # Check multiple locations for consistency with state_reader.py
         fallback_candidates = [
-            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
+            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New # noqa: E501
             project_root / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
             project_root / "docs" / "sprint-status.yaml",  # Legacy (direct)
         ]

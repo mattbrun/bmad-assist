@@ -1,8 +1,7 @@
 """Antipatterns extraction from synthesis reports.
 
-This module extracts verified issues from synthesis reports using the helper
-LLM model, then appends them to epic-scoped antipatterns files for use by
-subsequent workflows.
+This module extracts verified issues from synthesis reports using regex patterns,
+then appends them to epic-scoped antipatterns files for use by subsequent workflows.
 
 Public API:
     extract_antipatterns: Extract issues list from synthesis content
@@ -11,14 +10,12 @@ Public API:
 """
 
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import yaml
-
-from bmad_assist.antipatterns.prompts import EXTRACTION_PROMPT
-from bmad_assist.core.io import atomic_write, strip_code_block
+from bmad_assist.core.io import atomic_write
 from bmad_assist.core.paths import get_paths
 
 if TYPE_CHECKING:
@@ -27,24 +24,41 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Regex patterns for extraction
+ISSUES_SECTION_PATTERN = re.compile(
+    r"## Issues Verified.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL
+)
+SEVERITY_HEADER_PATTERN = re.compile(
+    r"^###\s+(Critical|High|Medium|Low)", re.IGNORECASE | re.MULTILINE
+)
+# Issue with Fix - handles BOTH formats:
+# Format A: - **Issue desc** | ... | **Fix**: action (whole desc is bold)
+# Format B: - **Issue**: desc | ... | **Fix**: action (only "Issue" is bold)
+# Must have **Fix**: to be extracted (skip DEFERRED)
+# Captures: group(1) = raw issue text (needs cleanup), group(2) = fix action
+ISSUE_WITH_FIX_PATTERN = re.compile(
+    r"^\s*-\s+\*\*([^|]+?)\s*\|.*?\*\*Fix\*\*:\s*(.+?)$", re.MULTILINE
+)
+
+
 # Warning header for antipatterns files
-STORY_ANTIPATTERNS_HEADER = '''# Epic {epic_id} - Story Antipatterns
+STORY_ANTIPATTERNS_HEADER = """# Epic {epic_id} - Story Antipatterns
 
 > **WARNING: ANTI-PATTERNS**
 > The issues below were MISTAKES found during validation of previous stories.
 > DO NOT repeat these patterns. Learn from them and avoid similar errors.
 > These represent story-writing mistakes (unclear AC, missing Notes, unrealistic scope).
 
-'''
+"""
 
-CODE_ANTIPATTERNS_HEADER = '''# Epic {epic_id} - Code Antipatterns
+CODE_ANTIPATTERNS_HEADER = """# Epic {epic_id} - Code Antipatterns
 
 > **WARNING: ANTI-PATTERNS**
 > The issues below were MISTAKES found during code review of previous stories.
 > DO NOT repeat these patterns. Learn from them and avoid similar errors.
 > These represent implementation mistakes (race conditions, missing tests, weak assertions, etc.)
 
-'''
+"""
 
 
 def extract_antipatterns(
@@ -53,95 +67,83 @@ def extract_antipatterns(
     story_id: str,
     config: "Config",
 ) -> list[dict[str, str]]:
-    """Extract verified issues from synthesis content using helper model.
+    """Extract verified issues from synthesis content using regex patterns.
 
     Args:
         synthesis_content: Raw synthesis report content.
         epic_id: Epic identifier (numeric or string like "testarch").
         story_id: Story identifier (e.g., "24-11").
-        config: Application configuration with helper provider settings.
+        config: Application configuration with antipatterns settings.
 
     Returns:
-        List of issue dictionaries with keys: severity, issue, file, fix.
+        List of issue dictionaries with keys: severity, issue, fix.
         Returns empty list on any failure (best-effort, non-blocking).
 
     """
+    logger.info("Starting antipatterns extraction for story %s", story_id)
+
+    # Check config
+    try:
+        if not config.antipatterns.enabled:
+            logger.debug("Antipatterns extraction disabled in config")
+            return []
+    except AttributeError:
+        pass  # Config doesn't have antipatterns yet, proceed with default enabled
+
     # Input validation - early exit
     if not synthesis_content or not synthesis_content.strip():
         logger.debug("Empty synthesis content, skipping antipatterns extraction")
         return []
 
-    if "Issues Verified" not in synthesis_content:
+    # Find Issues Verified section
+    section_match = ISSUES_SECTION_PATTERN.search(synthesis_content)
+    if not section_match:
         logger.debug("No 'Issues Verified' section found, skipping extraction")
         return []
 
-    # Check helper provider is configured
-    helper_config = config.providers.helper
-    if not helper_config.provider or not helper_config.model:
-        logger.warning("Helper provider not configured, skipping antipatterns extraction")
-        return []
+    section_content = section_match.group(0)
+    issues: list[dict[str, str]] = []
 
-    try:
-        from bmad_assist.providers import get_provider
+    # Split by severity headers and extract issues
+    current_severity = "unknown"
+    lines = section_content.split("\n")
 
-        # Get helper provider
-        provider = get_provider(helper_config.provider)
+    for line in lines:
+        # Check for severity header
+        header_match = SEVERITY_HEADER_PATTERN.match(line)
+        if header_match:
+            current_severity = header_match.group(1).lower()
+            continue
 
-        # Build prompt
-        date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-        prompt = EXTRACTION_PROMPT.format(
-            story_id=story_id,
-            date=date_str,
-            synthesis_content=synthesis_content,
-        )
+        # Check for issue with fix
+        issue_match = ISSUE_WITH_FIX_PATTERN.match(line)
+        if issue_match:
+            issue_desc = issue_match.group(1).strip()
+            fix_desc = issue_match.group(2).strip()
 
-        # Invoke helper (SYNC) with no file modification allowed
-        result = provider.invoke(
-            prompt,
-            model=helper_config.model,
-            timeout=60,
-            settings_file=helper_config.settings_path,
-            allowed_tools=[],  # Extraction is read-only
-        )
+            # Clean up issue description:
+            # - Remove trailing ** (Format A: **desc**)
+            # - Remove leading Issue**: prefix (Format B: Issue**: desc)
+            issue_desc = issue_desc.rstrip("*").strip()
+            if issue_desc.startswith("Issue"):
+                # Remove "Issue**:" or "Issue:" prefix
+                issue_desc = re.sub(r"^Issue\*{0,2}:?\s*", "", issue_desc)
 
-        if result.exit_code != 0:
-            logger.warning(
-                "Helper model extraction failed: exit_code=%d, stderr=%s",
-                result.exit_code,
-                result.stderr[:200] if result.stderr else "(empty)",
+            issues.append(
+                {
+                    "severity": current_severity,
+                    "issue": issue_desc,
+                    "fix": fix_desc,
+                }
             )
-            return []
 
-        # Strip code fences and parse YAML
-        cleaned = strip_code_block(result.stdout)
-
-        try:
-            data = yaml.safe_load(cleaned)
-        except yaml.YAMLError as e:
-            logger.warning("Failed to parse extraction YAML: %s", e)
-            return []
-
-        # Validate structure
-        if not isinstance(data, dict) or "issues" not in data:
-            logger.warning("Invalid extraction response structure: missing 'issues' key")
-            return []
-
-        issues = data.get("issues", [])
-        if not isinstance(issues, list):
-            logger.warning("Invalid extraction response: 'issues' is not a list")
-            return []
-
-        logger.info(
-            "Extracted %d antipatterns from story %s (epic %s)",
-            len(issues),
-            story_id,
-            epic_id,
-        )
-        return issues
-
-    except Exception as e:
-        logger.warning("Antipatterns extraction failed: %s", e)
-        return []
+    logger.info(
+        "Extracted %d antipatterns from story %s (epic %s)",
+        len(issues),
+        story_id,
+        epic_id,
+    )
+    return issues
 
 
 def append_to_antipatterns_file(
@@ -170,15 +172,15 @@ def append_to_antipatterns_file(
 
     try:
         paths = get_paths()
+        impl_artifacts = paths.implementation_artifacts
     except RuntimeError:
         # Paths not initialized - use fallback
         impl_artifacts = project_path / "_bmad-output" / "implementation-artifacts"
-        impl_artifacts.mkdir(parents=True, exist_ok=True)
-        antipatterns_path = impl_artifacts / f"epic-{epic_id}-{antipattern_type}-antipatterns.md"
-    else:
-        antipatterns_path = (
-            paths.implementation_artifacts / f"epic-{epic_id}-{antipattern_type}-antipatterns.md"
-        )
+
+    # Create antipatterns subdirectory
+    antipatterns_dir = impl_artifacts / "antipatterns"
+    antipatterns_dir.mkdir(parents=True, exist_ok=True)
+    antipatterns_path = antipatterns_dir / f"epic-{epic_id}-{antipattern_type}-antipatterns.md"
 
     # Determine header based on type
     if antipattern_type == "story":
@@ -192,18 +194,17 @@ def append_to_antipatterns_file(
     else:
         existing_content = header
 
-    # Build story section
+    # Build story section with 3-column table (no file column)
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     story_section = f"\n## Story {story_id} ({date_str})\n\n"
-    story_section += "| Severity | Issue | File | Fix |\n"
-    story_section += "|----------|-------|------|-----|\n"
+    story_section += "| Severity | Issue | Fix |\n"
+    story_section += "|----------|-------|-----|\n"
 
     for issue in issues:
         severity = issue.get("severity", "unknown")
         issue_desc = issue.get("issue", "").replace("|", "\\|").replace("\n", " ")
-        file_ref = issue.get("file", "-").replace("|", "\\|")
         fix_desc = issue.get("fix", "-").replace("|", "\\|").replace("\n", " ")
-        story_section += f"| {severity} | {issue_desc} | {file_ref} | {fix_desc} |\n"
+        story_section += f"| {severity} | {issue_desc} | {fix_desc} |\n"
 
     # Append to content
     full_content = existing_content.rstrip() + "\n" + story_section

@@ -558,7 +558,9 @@ class TestOpenCodeProviderToolRestrictions:
 
             assert result.exit_code == 0
             warning_logs = [
-                record for record in caplog.records if "restricted tool" in record.message.lower()
+                record
+                for record in caplog.records
+                if "restricted tool" in record.getMessage().lower()
             ]
             assert len(warning_logs) > 0
 

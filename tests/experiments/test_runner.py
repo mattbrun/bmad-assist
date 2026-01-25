@@ -690,7 +690,7 @@ fixtures:
         assert output.status == ExperimentStatus.FAILED
         assert output.stories_failed == 1
         assert output.stories_attempted == 1  # Stopped after first failure
-        assert "Phase failed" in output.error
+        assert "failed at" in output.error  # Error format: "Story X.X failed at phase"
 
     def test_required_step_failure_continues_without_fail_fast(
         self, experiments_with_optional_step: Path

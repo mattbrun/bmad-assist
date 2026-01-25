@@ -23,6 +23,7 @@ def get_bundled_workflow_dir(workflow_name: str) -> Path | None:
     Note:
         importlib.resources.files() returns Traversable, not Path.
         We validate with Traversable methods, then convert to Path.
+
     """
     try:
         # Get package resources path (returns Traversable)
@@ -49,6 +50,7 @@ def list_bundled_workflows() -> list[str]:
 
     Returns:
         List of workflow directory names that contain workflow.yaml.
+
     """
     try:
         package_path: Traversable = files("bmad_assist.workflows")

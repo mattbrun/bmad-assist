@@ -372,22 +372,9 @@ class CreateStoryCompiler:
         files.update(strategic_files)
 
         # 2. Include story antipatterns from previous validations (if exists)
-        # Position: early in context as general guidance (before stories/epic files)
-        if epic_num is not None:
-            from bmad_assist.core.paths import get_paths
+        from bmad_assist.compiler.strategic_context import load_antipatterns
 
-            try:
-                paths = get_paths()
-                antipatterns_path = (
-                    paths.implementation_artifacts / f"epic-{epic_num}-story-antipatterns.md"
-                )
-                if antipatterns_path.exists():
-                    files["[ANTIPATTERNS - DO NOT REPEAT]"] = antipatterns_path.read_text(
-                        encoding="utf-8"
-                    )
-                    logger.debug("Added story antipatterns to create-story context")
-            except (RuntimeError, OSError) as e:
-                logger.debug("Could not load story antipatterns: %s", e)
+        files.update(load_antipatterns(context, "story"))
 
         # 3. Previous stories via ContextBuilder
         builder = ContextBuilder(context)

@@ -14,6 +14,8 @@ from pathlib import Path
 import typer
 
 from bmad_assist.bmad import read_project_state
+from bmad_assist.bmad.parser import EpicStory
+from bmad_assist.bmad.state_reader import ProjectState
 from bmad_assist.cli_utils import (
     EXIT_CONFIG_ERROR,
     _error,
@@ -22,6 +24,7 @@ from bmad_assist.cli_utils import (
     console,
 )
 from bmad_assist.core.config import Config
+from bmad_assist.core.epic_lifecycle import EpicLifecycleStatus
 from bmad_assist.core.loop.interactive import is_non_interactive
 from bmad_assist.core.state import Phase, get_state_path, load_state, save_state, update_position
 from bmad_assist.core.types import EpicId, parse_epic_id
@@ -116,9 +119,9 @@ def apply_start_point_override(
 def _handle_story_specified(
     epic: EpicId,
     story_id: str,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     force_restart: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     """Handle case when both epic and story are specified.
 
     Returns:
@@ -156,9 +159,9 @@ def _handle_story_specified(
 def _handle_done_story(
     story_key: str,
     epic: EpicId,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     force_restart: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str | None]:
     """Handle a story that is already done.
 
     Returns:
@@ -179,7 +182,8 @@ def _handle_done_story(
         next_story = next((s for s in epic_stories if s.status != "done"), None)
         if next_story:
             _info(
-                f"Story {story_key} is done, auto-skipping to next not-done story {next_story.number}"
+                f"Story {story_key} is done, auto-skipping to next "
+                f"not-done story {next_story.number}"
             )
             return next_story.number, next_story.status
         else:
@@ -191,7 +195,8 @@ def _handle_done_story(
     # Interactive mode - prompt user
     console.print(f"\n[bold yellow]Story {story_key} is already 'done'.[/bold yellow]")
     console.print(
-        "[bold](r)[/bold]estart story  [bold](s)[/bold]kip to next not-done  [bold](c)[/bold]ancel: ",
+        "[bold](r)[/bold]estart story  [bold](s)[/bold]kip to next not-done  "
+        "[bold](c)[/bold]ancel: ",
         end="",
     )
 
@@ -216,12 +221,12 @@ def _handle_done_story(
 
 def _handle_epic_only(
     epic: EpicId,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     config: Config,
     project_path: Path,
-    project_state,
+    project_state: "ProjectState",
     force_restart: bool,
-) -> tuple[str, str] | None:
+) -> tuple[str, str | None] | None:
     """Handle case when only epic is specified (no story).
 
     Returns:
@@ -246,12 +251,14 @@ def _handle_epic_only(
         return _handle_fully_completed_epic(epic, epic_stories, force_restart)
 
     # Epic has pending post-story phases
-    return _handle_pending_phases(epic, epic_stories, config, project_path, lifecycle, force_restart)
+    return _handle_pending_phases(
+        epic, epic_stories, config, project_path, lifecycle, force_restart
+    )
 
 
 def _handle_fully_completed_epic(
     epic: EpicId,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     force_restart: bool,
 ) -> tuple[str, str]:
     """Handle an epic that is fully completed (all phases done).
@@ -296,12 +303,12 @@ def _handle_fully_completed_epic(
 
 def _handle_pending_phases(
     epic: EpicId,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     config: Config,
     project_path: Path,
-    lifecycle,
+    lifecycle: "EpicLifecycleStatus",
     force_restart: bool,
-) -> tuple[str, str] | None:
+) -> tuple[str, str | None] | None:
     """Handle an epic with pending post-story phases.
 
     Returns:
@@ -337,11 +344,11 @@ def _handle_pending_phases(
 
 def _interactive_phase_selection(
     epic: EpicId,
-    epic_stories: list,
+    epic_stories: list[EpicStory],
     config: Config,
     project_path: Path,
-    lifecycle,
-) -> tuple[str, str] | None:
+    lifecycle: "EpicLifecycleStatus",
+) -> tuple[str, str | None] | None:
     """Interactive menu for selecting phase when epic has pending phases.
 
     Returns:
@@ -359,17 +366,17 @@ def _interactive_phase_selection(
         f"\n[bold yellow]Epic {epic} - {lifecycle.describe()}[/bold yellow]"
     )
     console.print("  [dim]- All stories done: [green]yes[/green][/dim]")
-    console.print(
-        f"  [dim]- Retrospective: {'[green]done[/green]' if lifecycle.retro_completed else '[yellow]pending[/yellow]'}[/dim]"
-    )
+    retro_status = "[green]done[/green]" if lifecycle.retro_completed else "[yellow]pending[/yellow]"  # noqa: E501
+    console.print(f"  [dim]- Retrospective: {retro_status}[/dim]")
     # Only show QA status when --qa flag is enabled
     if qa_mode:
-        console.print(
-            f"  [dim]- QA plan: {'[green]generated[/green]' if lifecycle.qa_plan_generated else '[yellow]pending[/yellow]'}[/dim]"
+        qa_gen = lifecycle.qa_plan_generated
+        qa_plan_status = "[green]generated[/green]" if qa_gen else "[yellow]pending[/yellow]"
+        console.print(f"  [dim]- QA plan: {qa_plan_status}[/dim]")
+        qa_exec_status = (
+            "[green]done[/green]" if lifecycle.qa_plan_executed else "[yellow]pending[/yellow]"
         )
-        console.print(
-            f"  [dim]- QA execution: {'[green]done[/green]' if lifecycle.qa_plan_executed else '[yellow]pending[/yellow]'}[/dim]"
-        )
+        console.print(f"  [dim]- QA execution: {qa_exec_status}[/dim]")
 
     # Build options based on what's pending
     options = []
@@ -448,11 +455,12 @@ def _read_choice(valid_choices: list[str]) -> str:
             choice = sys.stdin.readline().strip().lower()
             if choice in valid_choices:
                 return choice
+            choices_str = ", ".join(valid_choices)
             console.print(
-                f"[yellow]Invalid choice. Please enter one of {', '.join(valid_choices)}:[/yellow] ",
+                f"[yellow]Invalid choice. Please enter one of {choices_str}:[/yellow] ",
                 end="",
             )
         except (KeyboardInterrupt, EOFError):
             console.print()  # New line after ^C or ^D
             _info("Cancelled by user")
-            raise typer.Exit(code=0)
+            raise typer.Exit(code=0) from None

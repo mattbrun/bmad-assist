@@ -1,7 +1,7 @@
-"""Extraction prompt template for antipatterns.
+"""DEPRECATED: LLM extraction prompt template.
 
-This module contains the prompt template used to extract verified issues
-from synthesis reports using the helper LLM.
+This module is no longer used - antipatterns extraction now uses regex.
+Kept for reference only. Will be removed in future version.
 """
 
 EXTRACTION_PROMPT = '''Extract all VERIFIED issues from this synthesis report.

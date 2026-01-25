@@ -4,17 +4,19 @@ Story 6.5: run_loop() and _run_loop_body() implementation.
 Story 15.4: Event notification dispatch integration.
 Story 20.10: Sprint-status sync and repair integration.
 
+This module has been refactored to import helper functions from:
+- helpers.py: _count_epic_stories, _get_story_title
+- notifications.py: _dispatch_event
+- sprint_sync.py: Sprint sync and repair functions
+- epic_phases.py: _execute_epic_setup, _execute_epic_teardown
+- locking.py: Lock file management
+
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
-import os
-import subprocess
 from collections.abc import Callable
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,8 +32,18 @@ from bmad_assist.core.loop.dashboard_events import (
     story_id_from_parts,
 )
 from bmad_assist.core.loop.dispatch import execute_phase, init_handlers
+
+# Extracted helper modules
+from bmad_assist.core.loop.epic_phases import (
+    _execute_epic_setup,
+    _execute_epic_teardown,
+)
 from bmad_assist.core.loop.epic_transitions import handle_epic_completion
 from bmad_assist.core.loop.guardian import get_next_phase, guardian_check_anomaly
+from bmad_assist.core.loop.helpers import _count_epic_stories, _get_story_title
+from bmad_assist.core.loop.interactive import checkpoint_and_prompt, is_skip_story_prompts
+from bmad_assist.core.loop.locking import _running_lock
+from bmad_assist.core.loop.notifications import _dispatch_event
 from bmad_assist.core.loop.signals import (
     _get_interrupt_exit_reason,
     register_signal_handlers,
@@ -39,8 +51,15 @@ from bmad_assist.core.loop.signals import (
     shutdown_requested,
     unregister_signal_handlers,
 )
+from bmad_assist.core.loop.sprint_sync import (
+    _ensure_sprint_sync_callback,
+    _invoke_sprint_sync,
+    _run_archive_artifacts,
+    _trigger_interactive_repair,
+    _validate_resume_against_sprint,
+)
 from bmad_assist.core.loop.story_transitions import handle_story_completion
-from bmad_assist.core.loop.types import GuardianDecision, LoopExitReason, PhaseResult
+from bmad_assist.core.loop.types import GuardianDecision, LoopExitReason
 from bmad_assist.core.state import (
     Phase,
     State,
@@ -68,725 +87,6 @@ __all__ = [
 
 # Type alias for state parameter
 LoopState = State
-
-
-# =============================================================================
-# Epic Story Count Helper - Story standalone-03 Synthesis Fix
-# =============================================================================
-
-
-def _count_epic_stories(state: LoopState) -> int:
-    """Count completed stories belonging to the current epic only.
-
-    Stories in completed_stories have format like "1.1", "2.5", "testarch.3".
-    This function filters to count only those matching current_epic.
-
-    Args:
-        state: Current loop state with completed_stories and current_epic.
-
-    Returns:
-        Count of stories completed in the current epic (0 if none).
-
-    """
-    if not state.completed_stories or state.current_epic is None:
-        return 0
-
-    epic_prefix = f"{state.current_epic}."
-    return sum(1 for story in state.completed_stories if story.startswith(epic_prefix))
-
-
-# =============================================================================
-# Story Title Helper
-# =============================================================================
-
-
-def _get_story_title(project_path: Path, story_id: str) -> str | None:
-    """Get human-readable story title from sprint-status or story key.
-
-    Tries to extract story title from:
-    1. Sprint-status entries (e.g., "2-1-css-design-tokens" -> "CSS Design Tokens")
-    2. Story key slug (fallback)
-
-    Args:
-        project_path: Project root path.
-        story_id: Story identifier (e.g., "2.1").
-
-    Returns:
-        Story title if found, None otherwise.
-
-    """
-    try:
-        from bmad_assist.core.paths import get_paths
-        from bmad_assist.sprint.parser import parse_sprint_status
-
-        # Load sprint-status to find story entry with title
-        sprint_path = get_paths().sprint_status_file
-        if not sprint_path.exists():
-            return None
-
-        sprint_data = parse_sprint_status(sprint_path)
-
-        # Find entry matching this story ID (e.g., "2.1" matches "2-1-css-design-tokens")
-        # Story ID format: "X.Y" -> key prefix "X-Y-"
-        story_parts = story_id.split(".")
-        if len(story_parts) == 2:
-            key_prefix = f"{story_parts[0]}-{story_parts[1]}-"
-            for entry in sprint_data.entries.values():
-                if entry.key.startswith(key_prefix):
-                    # Extract title from key: "2-1-css-design-tokens" -> "css design tokens" -> "CSS Design Tokens"
-                    title_slug = entry.key[len(key_prefix) :]
-                    if title_slug:
-                        # Convert slug to title: kebab-case -> Title Case
-                        return title_slug.replace("-", " ").title()
-    except Exception:
-        pass
-
-    return None
-
-
-# =============================================================================
-# Notification Dispatch Helper - Story 15.4
-# =============================================================================
-
-
-def _dispatch_event(
-    event_type: str,
-    project_path: Path,
-    state: LoopState,
-    **extra_fields: str | int | None,
-) -> None:
-    """Fire-and-forget dispatch of notification events.
-
-    Runs dispatch in a new event loop to not block the main loop.
-    All errors are caught and logged - never raises.
-
-    Args:
-        event_type: Event type name (e.g., "story_started", "phase_completed").
-        project_path: Project root path for project name.
-        state: Current loop state for epic/story info.
-        **extra_fields: Additional fields for payload (phase, duration_ms, etc.).
-
-    """
-    try:
-        from bmad_assist.notifications.dispatcher import get_dispatcher  # noqa: I001
-        from bmad_assist.notifications.events import (  # noqa: I001
-            EpicCompletedPayload,
-            ErrorOccurredPayload,
-            EventPayload,
-            EventType,
-            PhaseCompletedPayload,
-            ProjectCompletedPayload,
-            QueueBlockedPayload,
-            StoryCompletedPayload,
-            StoryStartedPayload,
-        )
-
-        dispatcher = get_dispatcher()
-        if dispatcher is None:
-            return
-
-        # Build payload based on event type
-        project = project_path.name
-        # Default epic/story to safe values if None
-        epic = state.current_epic if state.current_epic is not None else 0
-        story = state.current_story if state.current_story is not None else "unknown"
-
-        payload: EventPayload
-        event: EventType
-
-        if event_type == "story_started":
-            event = EventType.STORY_STARTED
-            phase_str = extra_fields.get("phase")
-            story_title = extra_fields.get("story_title")
-            payload = StoryStartedPayload(
-                project=project,
-                epic=epic,
-                story=story,
-                phase=str(phase_str) if phase_str else "",
-                story_title=str(story_title) if story_title else None,
-            )
-        elif event_type == "story_completed":
-            event = EventType.STORY_COMPLETED
-            duration = extra_fields.get("duration_ms")
-            outcome = extra_fields.get("outcome")
-            payload = StoryCompletedPayload(
-                project=project,
-                epic=epic,
-                story=story,
-                duration_ms=int(duration) if duration else 0,
-                outcome=str(outcome) if outcome else "success",
-            )
-        elif event_type == "phase_completed":
-            event = EventType.PHASE_COMPLETED
-            phase_val = extra_fields.get("phase")
-            next_phase = extra_fields.get("next_phase")
-            duration = extra_fields.get("duration_ms")
-            payload = PhaseCompletedPayload(
-                project=project,
-                epic=epic,
-                story=story,
-                phase=str(phase_val) if phase_val else "",
-                next_phase=str(next_phase) if next_phase else None,
-                duration_ms=int(duration) if duration else 0,
-            )
-        elif event_type == "error_occurred":
-            event = EventType.ERROR_OCCURRED
-            error_type_val = extra_fields.get("error_type")
-            message_val = extra_fields.get("message")
-            stack_val = extra_fields.get("stack_trace")
-            payload = ErrorOccurredPayload(
-                project=project,
-                epic=epic,
-                story=story,
-                error_type=str(error_type_val) if error_type_val else "unknown",
-                message=str(message_val) if message_val else "",
-                stack_trace=str(stack_val) if stack_val else None,
-            )
-        elif event_type == "queue_blocked":
-            event = EventType.QUEUE_BLOCKED
-            reason_val = extra_fields.get("reason")
-            waiting_val = extra_fields.get("waiting_tasks")
-            payload = QueueBlockedPayload(
-                project=project,
-                epic=epic,
-                story=story,
-                reason=str(reason_val) if reason_val else "guardian_halt",
-                waiting_tasks=int(waiting_val) if waiting_val else 0,
-            )
-        # Story standalone-03 AC6: Epic completion event
-        elif event_type == "epic_completed":
-            event = EventType.EPIC_COMPLETED
-            duration = extra_fields.get("duration_ms")
-            stories_completed = extra_fields.get("stories_completed")
-            payload = EpicCompletedPayload(
-                project=project,
-                epic=epic,
-                duration_ms=int(duration) if duration else 0,
-                stories_completed=int(stories_completed) if stories_completed else 0,
-            )
-        # Story standalone-03 AC7: Project completion event
-        elif event_type == "project_completed":
-            event = EventType.PROJECT_COMPLETED
-            duration = extra_fields.get("duration_ms")
-            epics_completed = extra_fields.get("epics_completed")
-            stories_completed = extra_fields.get("stories_completed")
-            payload = ProjectCompletedPayload(
-                project=project,
-                epic=epic,
-                duration_ms=int(duration) if duration else 0,
-                epics_completed=int(epics_completed) if epics_completed else 0,
-                stories_completed=int(stories_completed) if stories_completed else 0,
-            )
-        else:
-            logger.debug("Unknown event type for dispatch: %s", event_type)
-            return
-
-        # Run dispatch with nested event loop safety (AC3 requirement)
-        # Check if we're inside an already-running event loop (test environments)
-        try:
-            loop = asyncio.get_running_loop()
-            # We're in an async context - create task (fire-and-forget)
-            loop.create_task(dispatcher.dispatch(event, payload))
-        except RuntimeError:
-            # No running loop - safe to use asyncio.run()
-            asyncio.run(dispatcher.dispatch(event, payload))
-
-    except Exception as e:
-        logger.debug("Notification dispatch error (ignored): %s", str(e))
-
-
-# =============================================================================
-# Resume Validation Against Sprint-Status - Bug fix for stale state on resume
-# =============================================================================
-
-
-def _validate_resume_against_sprint(
-    state: LoopState,
-    project_path: Path,
-    epic_list: list[EpicId],
-    epic_stories_loader: Callable[[EpicId], list[str]],
-    state_path: Path,
-) -> tuple[LoopState, bool]:
-    """Validate and advance state based on sprint-status on resume.
-
-    Checks sprint-status.yaml to see if current story/epic is already done.
-    If so, advances state to the next incomplete story/epic.
-
-    This fixes the bug where:
-    - Loop was interrupted after completing work
-    - sprint-status.yaml reflects the completed work
-    - But state.yaml is stale and points to the completed position
-    - On resume, loop would re-execute completed work
-
-    Args:
-        state: Current state from state.yaml.
-        project_path: Project root directory.
-        epic_list: Ordered list of epic IDs.
-        epic_stories_loader: Function to get stories for an epic.
-        state_path: Path to state file for persistence.
-
-    Returns:
-        Tuple of (updated_state, is_project_complete).
-        - updated_state: May be same as input if no changes needed.
-        - is_project_complete: True if all epics are done.
-
-    """
-    try:
-        from bmad_assist.sprint.resume_validation import validate_resume_state
-    except ImportError:
-        logger.debug("Sprint resume validation module not available")
-        return state, False
-
-    try:
-        result = validate_resume_state(state, project_path, epic_list, epic_stories_loader)
-
-        if result.project_complete:
-            # All epics done - save state if changed and signal completion
-            logger.info("Resume validation: project is complete")
-            if result.advanced:
-                save_state(result.state, state_path)
-            return result.state, True
-
-        if result.advanced:
-            logger.info("Resume validation: %s", result.summary())
-            # Persist the advanced state
-            save_state(result.state, state_path)
-            # Trigger sprint sync to update sprint-status with new state
-            _invoke_sprint_sync(result.state, project_path)
-            return result.state, False
-
-        logger.debug("Resume validation: no changes needed")
-        return state, False
-
-    except Exception as e:
-        # Resume validation is defensive - never crash the loop
-        logger.warning("Resume validation failed (continuing): %s", e)
-        return state, False
-
-
-# =============================================================================
-# Sprint Sync Integration - Story 20.10
-# =============================================================================
-
-
-def _invoke_sprint_sync(state: LoopState, project_path: Path) -> None:
-    """Invoke sprint sync callbacks after state save.
-
-    Fire-and-forget invocation of registered sync callbacks. All errors are
-    caught and logged at WARNING level, never propagating to the caller.
-
-    Args:
-        state: Current State instance.
-        project_path: Project root directory.
-
-    """
-    try:
-        from bmad_assist.sprint.sync import invoke_sync_callbacks
-
-        invoke_sync_callbacks(state, project_path)
-    except ImportError:
-        logger.debug("Sprint module not available for sync")
-    except Exception as e:
-        logger.warning("Sprint sync failed (ignored): %s", e)
-
-
-def _ensure_sprint_sync_callback() -> None:
-    """Ensure default sprint sync callback is registered at loop startup.
-
-    Idempotent registration - safe to call multiple times. Uses lazy import
-    with ImportError guard for sprint module availability.
-
-    """
-    try:
-        from bmad_assist.sprint.repair import ensure_sprint_sync_callback
-
-        ensure_sprint_sync_callback()
-    except ImportError:
-        logger.debug("Sprint module not available for callback registration")
-    except Exception as e:
-        logger.warning("Sprint callback registration failed (ignored): %s", e)
-
-
-def _trigger_interactive_repair(project_path: Path, state: LoopState) -> None:
-    """Trigger interactive repair on loop initialization.
-
-    Catches all exceptions including ImportError - NEVER crashes the loop.
-    Called only on fresh start to perform full artifact-based repair.
-
-    Args:
-        project_path: Project root directory.
-        state: Current State instance.
-
-    """
-    try:
-        from bmad_assist.sprint.repair import RepairMode, repair_sprint_status
-    except ImportError:
-        logger.debug("Sprint module not available for repair")
-        return
-
-    try:
-        result = repair_sprint_status(project_path, RepairMode.INTERACTIVE, state)
-        if result.user_cancelled:
-            logger.warning("Sprint repair cancelled, continuing without repair")
-        elif result.errors:
-            logger.warning("Sprint repair encountered errors: %s", result.errors)
-        else:
-            logger.info("Sprint repair complete: %s", result.summary())
-    except Exception as e:
-        logger.warning("Sprint repair failed (ignored): %s", e)
-
-
-def _run_archive_artifacts(project_path: Path) -> None:
-    """Run archive-artifacts.sh to archive multi-LLM validation and review reports.
-
-    Archives non-master/non-synthesis .md files from:
-    - _bmad-output/implementation-artifacts/code-reviews/
-    - _bmad-output/implementation-artifacts/story-validations/
-
-    Called after CODE_REVIEW_SYNTHESIS to clean up multi-reviewer artifacts.
-    Script is idempotent - safe to call multiple times.
-
-    Args:
-        project_path: Project root directory.
-
-    """
-    script_path = project_path / "scripts" / "archive-artifacts.sh"
-
-    if not script_path.exists():
-        logger.debug("archive-artifacts.sh not found at %s, skipping", script_path)
-        return
-
-    try:
-        result = subprocess.run(
-            [str(script_path), "-s"],  # -s for silent mode
-            cwd=str(project_path),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            logger.info("Archived multi-LLM artifacts after code review synthesis")
-        else:
-            logger.warning(
-                "archive-artifacts.sh failed (returncode=%d): %s",
-                result.returncode,
-                result.stderr,
-            )
-    except subprocess.TimeoutExpired:
-        logger.warning("archive-artifacts.sh timed out after 30s")
-    except Exception as e:
-        logger.warning("archive-artifacts.sh execution failed: %s", e)
-
-
-# =============================================================================
-# Epic Scope Phase Helpers - Runner Epic Scope Refactor
-# =============================================================================
-
-
-def _execute_epic_setup(
-    state: LoopState,
-    state_path: Path,
-    project_path: Path,
-) -> tuple[LoopState, bool]:
-    """Execute epic setup phases before first story.
-
-    Iterates through all phases in loop_config.epic_setup and executes each.
-    On failure, returns immediately with success=False (loop should HALT).
-    On success, sets epic_setup_complete=True and persists state.
-
-    Per ADR-007: If resuming after a crash during setup, this function will
-    re-run ALL setup phases from the beginning (setup phases must be idempotent).
-
-    Args:
-        state: Current loop state.
-        state_path: Path to state file for persistence.
-        project_path: Project root directory.
-
-    Returns:
-        Tuple of (updated_state, success).
-        - success=True: All setup phases completed, epic_setup_complete=True
-        - success=False: A setup phase failed, loop should halt with GUARDIAN_HALT
-
-    """
-    from bmad_assist.core.config import get_loop_config
-
-    loop_config = get_loop_config()
-
-    if not loop_config.epic_setup:
-        # No setup phases configured - nothing to do
-        logger.debug("No epic_setup phases configured, skipping")
-        return state, True
-
-    logger.info(
-        "Running %d epic setup phases for epic %s: %s",
-        len(loop_config.epic_setup),
-        state.current_epic,
-        loop_config.epic_setup,
-    )
-
-    for phase_name in loop_config.epic_setup:
-        # Set current phase for this setup phase
-        now = datetime.now(UTC).replace(tzinfo=None)
-        state = state.model_copy(
-            update={
-                "current_phase": Phase(phase_name),
-                "updated_at": now,
-            }
-        )
-        # Reset phase timing before execution (consistent with main loop)
-        start_phase_timing(state)
-        save_state(state, state_path)
-
-        # Execute the setup phase
-        logger.info("Executing epic setup phase: %s", phase_name)
-        result = execute_phase(state)
-
-        if not result.success:
-            # Setup failure - halt the loop (per ADR-001)
-            logger.error(
-                "Epic setup phase %s failed for epic %s: %s",
-                phase_name,
-                state.current_epic,
-                result.error,
-            )
-            # Save state with failed phase for resume
-            save_state(state, state_path)
-            return state, False
-
-        logger.info("Epic setup phase %s completed successfully", phase_name)
-
-    # All setup phases completed successfully - set to first story phase from config
-    first_story_phase = Phase(loop_config.story[0])
-    now = datetime.now(UTC).replace(tzinfo=None)
-    state = state.model_copy(
-        update={
-            "epic_setup_complete": True,
-            "current_phase": first_story_phase,  # Ready for first story phase
-            "updated_at": now,
-        }
-    )
-    save_state(state, state_path)
-
-    logger.info(
-        "Epic setup complete for epic %s, ready for %s",
-        state.current_epic,
-        first_story_phase.name,
-    )
-    return state, True
-
-
-def _execute_epic_teardown(
-    state: LoopState,
-    state_path: Path,
-    project_path: Path,
-) -> tuple[LoopState, PhaseResult | None]:
-    """Execute epic teardown phases after last story.
-
-    Iterates through all phases in loop_config.epic_teardown and executes each.
-    On failure, logs warning and CONTINUES to next phase (per ADR-002).
-    Returns the last PhaseResult for metrics/logging purposes.
-
-    Args:
-        state: Current loop state after last story's CODE_REVIEW_SYNTHESIS.
-        state_path: Path to state file for persistence.
-        project_path: Project root directory.
-
-    Returns:
-        Tuple of (updated_state, last_result).
-        - last_result: PhaseResult from the last executed phase (for metrics)
-        - last_result is None if epic_teardown is empty
-
-    """
-    from bmad_assist.core.config import get_loop_config
-
-    loop_config = get_loop_config()
-
-    if not loop_config.epic_teardown:
-        # No teardown phases configured - nothing to do
-        logger.debug("No epic_teardown phases configured, skipping")
-        return state, None
-
-    logger.info(
-        "Running %d epic teardown phases for epic %s: %s",
-        len(loop_config.epic_teardown),
-        state.current_epic,
-        loop_config.epic_teardown,
-    )
-
-    last_result: PhaseResult | None = None
-
-    for phase_name in loop_config.epic_teardown:
-        # Set current phase for this teardown phase
-        now = datetime.now(UTC).replace(tzinfo=None)
-        state = state.model_copy(
-            update={
-                "current_phase": Phase(phase_name),
-                "updated_at": now,
-            }
-        )
-        # Reset phase timing before execution (consistent with main loop)
-        start_phase_timing(state)
-        save_state(state, state_path)
-
-        # Execute the teardown phase
-        logger.info("Executing epic teardown phase: %s", phase_name)
-        result = execute_phase(state)
-        last_result = result
-
-        if not result.success:
-            # Teardown failure - log warning and CONTINUE (per ADR-002)
-            logger.warning(
-                "Epic teardown phase %s failed for epic %s: %s. "
-                "Continuing to next teardown phase.",
-                phase_name,
-                state.current_epic,
-                result.error,
-            )
-            # Still save state even on failure
-            save_state(state, state_path)
-            continue
-
-        logger.info("Epic teardown phase %s completed successfully", phase_name)
-
-    logger.info("Epic teardown complete for epic %s", state.current_epic)
-    return state, last_result
-
-
-# =============================================================================
-# Lock File Context Manager - Dashboard Process Detection
-# =============================================================================
-
-
-def _is_pid_alive(pid: int) -> bool:
-    """Check if a process with the given PID is running.
-
-    Uses os.kill(pid, 0) which sends a null signal (doesn't kill the process,
-    only checks existence). Returns True if process exists, False if PID not found.
-
-    Story 22.3: PID validation for stale lock detection.
-
-    Args:
-        pid: Process ID to check.
-
-    Returns:
-        True if process is running, False if PID is not found (stale lock).
-
-    """
-    # Validate PID is positive - negative PIDs have special meaning in os.kill()
-    # (e.g., -1 = all processes in caller's process group)
-    if pid <= 0:
-        return False
-
-    try:
-        os.kill(pid, 0)  # Signal 0 doesn't kill, just checks existence
-        return True
-    except ProcessLookupError:
-        # PID definitely not found - stale lock
-        return False
-    except PermissionError:
-        # Process exists but belongs to another user - treat as alive
-        # This prevents overwriting valid locks from other users
-        return True
-    except OSError:
-        # Other OS errors (e.g., invalid PID) - treat as not found
-        return False
-
-
-def _read_lock_file(lock_path: Path) -> tuple[int | None, str | None]:
-    """Read PID and timestamp from lock file.
-
-    Story 22.3: Parse lock file for PID validation.
-
-    Args:
-        lock_path: Path to running.lock file.
-
-    Returns:
-        Tuple of (pid, timestamp) or (None, None) if file is invalid.
-
-    """
-    try:
-        content = lock_path.read_text().strip().split("\n")
-        if len(content) >= 2:
-            pid = int(content[0].strip())
-            timestamp = content[1].strip()
-            return pid, timestamp
-    except (ValueError, IndexError, OSError):
-        pass
-    return None, None
-
-
-@contextmanager
-def _running_lock(project_path: Path):
-    """Context manager for .bmad-assist/running.lock file.
-
-    Creates lock file with PID and timestamp on enter, removes on exit.
-    Dashboard checks this file to detect if run is active.
-
-    Story 22.2: Also initializes run-scoped prompts directory for organized
-    prompt tracking during the run.
-
-    Story 22.3: Implements PID validation for stale lock detection and
-    concurrent run prevention.
-
-    Args:
-        project_path: Project root directory.
-
-    Yields:
-        Path to lock file.
-
-    Raises:
-        StateError: If another bmad-assist run is already active.
-
-    """
-    from bmad_assist.core.io import get_timestamp, init_run_prompts_dir
-
-    lock_dir = project_path / ".bmad-assist"
-    lock_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = lock_dir / "running.lock"
-
-    # Story 22.3: Check for existing lock file and validate PID
-    if lock_path.exists():
-        existing_pid, lock_timestamp = _read_lock_file(lock_path)
-        if existing_pid is not None:
-            if _is_pid_alive(existing_pid):
-                # Active lock - abort to prevent concurrent runs
-                raise StateError(
-                    f"Another bmad-assist run is already active (PID {existing_pid}). "
-                    f"If this is incorrect, remove the stale lock file: {lock_path}"
-                )
-            else:
-                # Stale lock - remove and continue with warning
-                logger.warning(
-                    f"Removed stale lock file from dead process {existing_pid} "
-                    f"(locked at {lock_timestamp})"
-                )
-                try:
-                    lock_path.unlink()
-                except OSError as e:
-                    logger.warning(f"Failed to remove stale lock file: {e}")
-
-    # Generate run timestamp for run-scoped prompts directory
-    run_timestamp = get_timestamp()
-
-    # Initialize run-scoped prompts directory (Story 22.2)
-    init_run_prompts_dir(project_path, run_timestamp)
-
-    # Story 22.10: Clean up stale pause flag on startup (AC #7)
-    from bmad_assist.core.loop.pause import cleanup_stale_pause_flags
-
-    cleanup_stale_pause_flags(project_path)
-
-    # Write lock file with PID and timestamp
-    lock_content = f"{os.getpid()}\n{datetime.now(UTC).isoformat()}\n"
-    lock_path.write_text(lock_content)
-
-    try:
-        yield lock_path
-    finally:
-        # Story 22.3: Always remove lock file on exit
-        # Use contextlib.suppress for robustness if file was externally deleted
-        with contextlib.suppress(FileNotFoundError):
-            lock_path.unlink()
 
 
 # =============================================================================
@@ -1333,7 +633,7 @@ def _run_loop_body(
         )
 
         # Git auto-commit for the COMPLETED phase (before advancing)
-        # Only commits if phase is in COMMIT_PHASES (CREATE_STORY, DEV_STORY, CODE_REVIEW_SYNTHESIS, RETROSPECTIVE)
+        # Only commits if phase is in COMMIT_PHASES (CREATE_STORY, DEV_STORY, CODE_REVIEW_SYNTHESIS, RETROSPECTIVE) # noqa: E501
         # Validation phases are NOT in COMMIT_PHASES, so their reports are not committed.
         # Lazy import to avoid circular dependency
         from bmad_assist.git import auto_commit_phase
@@ -1410,6 +710,12 @@ def _run_loop_body(
                     stories_completed=epic_stories_count,
                 )
 
+                # Interactive continuation prompt at epic boundary (only if NOT project complete)
+                if not is_project_complete and not checkpoint_and_prompt(
+                    advanced_state, state_path, f"Epic {state.current_epic} complete. Continue?"
+                ):
+                    return LoopExitReason.COMPLETED  # Graceful exit - state already saved
+
                 if is_project_complete:
                     # Story standalone-03 AC7: Dispatch project_completed event
                     project_duration_ms = get_project_duration_ms(state)
@@ -1435,6 +741,13 @@ def _run_loop_body(
                 continue  # Next iteration will run epic_setup for new epic
             else:
                 # AC3: Not last story - advance to next story
+                # Interactive continuation prompt at story boundary
+                # Skip if --skip-story-prompts flag is set (but epic prompts still show)
+                if not is_skip_story_prompts() and not checkpoint_and_prompt(
+                    new_state, state_path, f"Story {state.current_story} complete. Continue?"
+                ):
+                    return LoopExitReason.COMPLETED  # Graceful exit - state already saved
+
                 state = new_state
                 # Start timing for the new story
                 start_story_timing(state)
@@ -1462,32 +775,32 @@ def _run_loop_body(
                     story_id_str = str(state.current_story)
                     # Parse story_id using helper function
                     try:
-                        epic_num, story_num = parse_story_id(story_id_str)
+                        parsed_epic, parsed_story = parse_story_id(story_id_str)
                     except ValueError:
                         # Fallback for standalone stories or non-standard IDs
                         # Use current_epic directly as EpicId (supports string epics)
-                        epic_num = state.current_epic if state.current_epic is not None else 1
-                        story_num = 1
+                        parsed_epic = state.current_epic if state.current_epic is not None else 1
+                        parsed_story = 1
 
                     # Get story title from story file or use default
                     # For now, use a slugified version of story_id as title
                     story_title = story_id_str.replace(".", "-").replace("_", "-").lower()
 
                     # Generate full story_id (epic-story-title format)
-                    full_story_id = story_id_from_parts(epic_num, story_num, story_title)
+                    full_story_id = story_id_from_parts(parsed_epic, parsed_story, story_title)
                     emit_story_transition(
                         run_id=run_id,
                         sequence_id=sequence_id,
                         action="started",
-                        epic_num=epic_num,
-                        story_num=story_num,
+                        epic_num=parsed_epic,
+                        story_num=parsed_story,
                         story_id=full_story_id,
                         story_title=story_title,
                     )
                     emit_workflow_status(
                         run_id=run_id,
                         sequence_id=sequence_id,
-                        epic_num=epic_num,
+                        epic_num=parsed_epic,
                         story_id=story_id_str,
                         phase=state.current_phase.name if state.current_phase else "CREATE_STORY",
                         phase_status="in-progress",
@@ -1496,7 +809,7 @@ def _run_loop_body(
             continue
 
         # AC4: QA_PLAN_EXECUTE success → handle epic completion
-        # Note: This is the FINAL phase of an epic (after RETROSPECTIVE → QA_PLAN_GENERATE → QA_PLAN_EXECUTE)
+        # Note: This is the FINAL phase of an epic (after RETROSPECTIVE → QA_PLAN_GENERATE → QA_PLAN_EXECUTE) # noqa: E501
         if current_phase == Phase.QA_PLAN_EXECUTE and result.success:
             # Calculate epic timing before handle_epic_completion modifies state
             epic_duration_ms = get_epic_duration_ms(state)

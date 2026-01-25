@@ -253,14 +253,9 @@ class TestCodeReviewSynthesisHandler:
 
         handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
         ):
             mock_render.return_value = "<compiled>test synthesis prompt</compiled>"
@@ -337,14 +332,9 @@ class TestCodeReviewSynthesisHandler:
 
         handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
         ):
             mock_render.return_value = "<compiled>test</compiled>"
@@ -408,14 +398,9 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
             patch(
                 "bmad_assist.validation.benchmarking_integration.should_collect_benchmarking"
@@ -463,14 +448,9 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
             patch(
                 "bmad_assist.validation.benchmarking_integration.should_collect_benchmarking"
@@ -525,14 +505,9 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(config_disabled, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
             patch("bmad_assist.benchmarking.storage.save_evaluation_record") as mock_save,
         ):
@@ -583,10 +558,6 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(config_with_benchmarking, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         # Track the record passed to save_evaluation_record
         saved_record: LLMEvaluationRecord | None = None
 
@@ -598,7 +569,6 @@ This is a synthesis of code reviews.
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
             patch(
                 "bmad_assist.benchmarking.storage.save_evaluation_record",
@@ -656,10 +626,6 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(config_with_default_variant, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         # Track the record passed to save_evaluation_record
         saved_record: LLMEvaluationRecord | None = None
 
@@ -671,7 +637,6 @@ This is a synthesis of code reviews.
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
             patch(
                 "bmad_assist.benchmarking.storage.save_evaluation_record",
@@ -697,51 +662,6 @@ This is a synthesis of code reviews.
             assert saved_record is not None
             assert saved_record.workflow.variant == "default"
 
-    def test_interactive_debugger_integration(
-        self,
-        synthesis_config: Config,
-        project_with_story: Path,
-        state_for_synthesis: State,
-        cached_reviews: str,
-    ) -> None:
-        """AC11: Interactive debugger integration."""
-        from bmad_assist.core.loop.handlers.code_review_synthesis import (
-            CodeReviewSynthesisHandler,
-        )
-
-        handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
-
-        # Mock debugger that returns False (user quit)
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = True
-        mock_debugger.run_debug_loop.return_value = False
-
-        with (
-            patch.object(handler, "render_prompt") as mock_render,
-            patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
-            patch("bmad_assist.core.debug_logger.save_prompt"),
-        ):
-            mock_render.return_value = "<compiled>test</compiled>"
-            mock_invoke.return_value = ProviderResult(
-                stdout="# Synthesis",
-                stderr="",
-                exit_code=0,
-                duration_ms=5000,
-                model="opus-4",
-                command=("claude", "--print"),
-            )
-
-            result = handler.execute(state_for_synthesis)
-
-            # Should fail with user interrupted message
-            assert not result.success
-            assert result.error is not None
-            assert "User interrupted" in result.error
-
-            # Verify debugger was called
-            mock_debugger.run_debug_loop.assert_called_once()
-
     def test_execute_fails_on_provider_error(
         self,
         synthesis_config: Config,
@@ -756,14 +676,9 @@ This is a synthesis of code reviews.
 
         handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.core.debug_logger.save_prompt"),
         ):
             mock_render.return_value = "<compiled>test</compiled>"

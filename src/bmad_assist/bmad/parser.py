@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import frontmatter  # type: ignore[import-untyped]  # Library lacks type stubs
+import frontmatter  # Library lacks type stubs
 
 from bmad_assist.core.exceptions import ParserError
 from bmad_assist.core.types import EpicId

@@ -31,6 +31,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import logging
 import os
@@ -1014,10 +1015,8 @@ class ConfigEditor:
         except Exception:
             # Clean up temp file on failure
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
             raise
 
     def _save_with_pyyaml(self, path: Path, data: dict[str, Any]) -> None:
@@ -1058,10 +1057,8 @@ class ConfigEditor:
         except Exception:
             # Clean up temp file on failure
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
             raise
 
     def _update_commented_map_recursive(
@@ -1251,8 +1248,6 @@ class ConfigEditor:
         except Exception:
             # Clean up temp file on failure
             if temp_path.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass
             raise

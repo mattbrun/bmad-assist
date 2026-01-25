@@ -15,7 +15,7 @@ The service respects strategic_context configuration in bmad-assist.yaml:
 
 import logging
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from bmad_assist.bmad.sharding import load_sharded_content
 from bmad_assist.bmad.sharding.sorting import DocType
@@ -342,4 +342,70 @@ class StrategicContextService:
 
         logger.warning("Sharded doc %s has no .md files", shard_dir.name)
         return "", ""
+
+
+def load_antipatterns(
+    context: CompilerContext,
+    antipattern_type: Literal["story", "code"],
+) -> dict[str, str]:
+    """Load epic-scoped antipatterns file for context assembly.
+
+    This is SEPARATE from StrategicContextService and its token budget.
+    Antipatterns are always loaded if enabled and file exists.
+
+    Args:
+        context: Compiler context with resolved variables.
+        antipattern_type: "story" for create-story, "code" for dev/review.
+
+    Returns:
+        Dict with key "[ANTIPATTERNS - DO NOT REPEAT]" and content,
+        or empty dict if disabled/missing.
+
+    """
+    # Check config
+    try:
+        from bmad_assist.core.config import get_config
+
+        if not get_config().antipatterns.enabled:
+            logger.debug("Antipatterns loading disabled in config")
+            return {}
+    except (ImportError, AttributeError, RuntimeError):
+        pass  # Config not available, proceed with default enabled
+
+    # Get epic_id
+    epic_id = context.resolved_variables.get("epic_num")
+    if not epic_id:
+        logger.debug("No epic_num in context, skipping antipatterns")
+        return {}
+
+    # Build paths (check new path first, then legacy)
+    try:
+        from bmad_assist.core.paths import get_paths
+
+        paths = get_paths()
+        impl_artifacts = paths.implementation_artifacts
+    except RuntimeError:
+        impl_artifacts = context.project_root / "_bmad-output" / "implementation-artifacts"
+
+    filename = f"epic-{epic_id}-{antipattern_type}-antipatterns.md"
+
+    # Check new path first, then legacy path
+    new_path = impl_artifacts / "antipatterns" / filename
+    legacy_path = impl_artifacts / filename
+
+    antipatterns_path = new_path if new_path.exists() else legacy_path
+
+    if not antipatterns_path.exists():
+        logger.debug("No %s antipatterns file for epic %s", antipattern_type, epic_id)
+        return {}
+
+    try:
+        content = antipatterns_path.read_text(encoding="utf-8")
+        logger.info(
+            "Loaded %s antipatterns for epic %s (%d chars)", antipattern_type, epic_id, len(content)
+        )
+        return {"[ANTIPATTERNS - DO NOT REPEAT]": content}
+    except (OSError, UnicodeDecodeError) as e:
+        logger.warning("Failed to read antipatterns: %s", e)
+        return {}
 

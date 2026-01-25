@@ -19,8 +19,6 @@ def _get_full_schema() -> dict[str, Any]:
         Full config schema with all fields including dangerous.
 
     """
-    from . import _full_schema_cache
-
     # Import here to avoid circular import at module load
     import bmad_assist.dashboard.routes.config.utils as utils_module
 
@@ -238,7 +236,7 @@ def _find_dangerous_fields(data: dict[str, Any], schema: dict[str, Any]) -> list
     dangerous = []
     flat_data = _flatten_dict(data)
 
-    for path in flat_data.keys():
+    for path in flat_data:
         # Check schema for this path's security level
         security = _get_field_security(path, schema)
         if security == "dangerous":
@@ -290,7 +288,7 @@ def _filter_dangerous_for_export_recursive(data: dict[str, Any], schema: dict[st
                 keys_to_remove.append(key)
             elif isinstance(data[key], dict):
                 # Nested object - always recurse to find nested dangerous fields
-                # even if parent has a security level (e.g., "risky" parent may have "dangerous" children)
+                # even if parent has a security level (e.g., "risky" parent may have "dangerous" children) # noqa: E501
                 _filter_dangerous_for_export_recursive(data[key], field_schema)
             elif field_schema.get("type") == "array" and isinstance(data[key], list):
                 # Array type - filter items

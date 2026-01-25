@@ -528,7 +528,7 @@ class BaseHandler(ABC):
             return multi.model
 
     def get_cli_model(self) -> str | None:
-        """Get the CLI model identifier for provider invocation (always returns model, not model_name)."""
+        """Get the CLI model identifier for provider invocation (always returns model, not model_name).""" # noqa: E501
         provider_type = self._get_provider_type()
 
         if provider_type == "master":
@@ -648,7 +648,6 @@ class BaseHandler(ABC):
         """Execute the handler for the given state.
 
         This is the main entry point called by the dispatch system.
-        In DEBUG mode, prompts for manual confirmation before proceeding.
         If track_timing is True, saves timing record for benchmarking.
 
         Args:
@@ -659,7 +658,6 @@ class BaseHandler(ABC):
 
         """
         from bmad_assist.core.io import save_prompt
-        from bmad_assist.core.loop.interactive import get_debugger
 
         # Capture start time for timing tracking
         start_time = datetime.now(UTC) if self.track_timing else None
@@ -704,24 +702,6 @@ class BaseHandler(ABC):
                     output=result.stdout,
                 )
 
-            # Interactive debug mode: prompt for action after phase
-            debugger = get_debugger()
-            if debugger.is_enabled:
-                result_summary = (
-                    f"{'SUCCESS' if phase_result.success else 'FAILED'} - "
-                    f"{len(result.stdout)} chars output"
-                )
-                continue_execution = debugger.run_debug_loop(
-                    phase_name=self.phase_name,
-                    result_summary=result_summary,
-                    provider=self.get_provider(),
-                    model=self.get_model(),
-                    timeout=get_phase_timeout(self.config, self.phase_name),
-                )
-                if not continue_execution:
-                    # User requested quit - mark as interrupted
-                    return PhaseResult.fail("User interrupted execution")
-
             return phase_result
 
         except ConfigError as e:
@@ -759,11 +739,7 @@ class BaseHandler(ABC):
                     # Try to convert to int, but handle string-based IDs like "6a"
                     # Extract leading numeric portion: "6a" -> 6, "test" -> 1 (fallback)
                     numeric_match = re.match(r"(\d+)", story_part)
-                    if numeric_match:
-                        story_num = int(numeric_match.group(1))
-                    else:
-                        # No numeric portion found, use fallback
-                        story_num = 1
+                    story_num = int(numeric_match.group(1)) if numeric_match else 1
                 except (ValueError, AttributeError):
                     # Conversion failed, use default
                     story_num = 1

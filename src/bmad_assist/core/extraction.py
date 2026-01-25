@@ -139,7 +139,7 @@ def extract_report(
     *,
     stop_at_markers: list[str] | None = None,
 ) -> str:
-    """Extract report content from LLM output.
+    r"""Extract report content from LLM output.
 
     Uses a three-stage extraction strategy:
     1. Primary: Extract content between HTML markers (START/END comments)
@@ -297,7 +297,7 @@ def _extract_by_patterns(
 
 
 def strip_code_block(text: str) -> str:
-    """Strip markdown code block wrappers if present.
+    r"""Strip markdown code block wrappers if present.
 
     Handles:
     - ```markdown\\n...\\n```

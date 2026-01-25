@@ -30,8 +30,8 @@ from pathlib import Path
 import yaml
 
 from bmad_assist.core.config import Config, ProviderConfig
-from bmad_assist.core.io import BMAD_ORIGINAL_CWD_ENV
 from bmad_assist.core.exceptions import ConfigError, IsolationError
+from bmad_assist.core.io import BMAD_ORIGINAL_CWD_ENV
 from bmad_assist.core.loop.dispatch import execute_phase, init_handlers
 from bmad_assist.core.loop.interactive import set_non_interactive
 from bmad_assist.core.loop.signals import (
@@ -253,6 +253,7 @@ class ExperimentRunner:
 
         """
         # Import here to avoid circular import
+        from bmad_assist.bmad.parser import EpicStory
         from bmad_assist.bmad.state_reader import read_project_state
         from bmad_assist.experiments.manifest import (
             ManifestInput,
@@ -393,7 +394,7 @@ class ExperimentRunner:
             init_handlers(experiment_config, snapshot_path)
 
             # 6a. Initialize run-scoped prompts directory (Story 22.2)
-            # This ensures prompts are saved in the new format: prompt-{epic}-{story}-{seq}-{phase}.md
+            # Prompts saved as: prompt-{epic}-{story}-{seq}-{phase}.md
             from bmad_assist.core.io import get_timestamp, init_run_prompts_dir
 
             run_timestamp = get_timestamp()
@@ -408,7 +409,7 @@ class ExperimentRunner:
             # 7a. Build epic_list and stories_by_epic from all non-done stories
             # (mirrors CLI behavior in _load_epics_and_stories)
             epic_numbers: set[EpicId] = set()
-            stories_by_epic: dict[EpicId, list] = {}  # EpicStory objects
+            stories_by_epic: dict[EpicId, list[EpicStory]] = {}  # EpicStory objects
 
             for story in project_state.all_stories:
                 if story.status == "done":
@@ -563,7 +564,7 @@ class ExperimentRunner:
                                     if input.fail_fast:
                                         # Stop immediately on first failure
                                         status = ExperimentStatus.FAILED
-                                        error = f"Story {story.number} failed at {step.workflow}: {result.error}"
+                                        error = f"Story {story.number} failed at {step.workflow}"
                                         logger.error(error)
                                         break
                                     else:
@@ -603,10 +604,9 @@ class ExperimentRunner:
                         break
 
                     # 11. Retrospective after all stories in this epic
-                    if status == ExperimentStatus.RUNNING and epic_stories and not shutdown_requested():
-                        logger.info(
-                            "All stories complete, executing retrospective for epic %s", current_epic
-                        )
+                    running = status == ExperimentStatus.RUNNING
+                    if running and epic_stories and not shutdown_requested():
+                        logger.info("All stories done, retrospective for epic %s", current_epic)
                         phase_start = datetime.now(UTC)
 
                         # Set phase for retrospective
@@ -948,10 +948,13 @@ class ExperimentRunner:
 
         # Update completed_stories if phase was successful
         # This ensures state file reflects progress for resumption/debugging
-        if result.success and state.current_story:
+        if (
+            result.success
+            and state.current_story
+            and state.current_story not in state.completed_stories
+        ):
             # Check if story already in list to avoid duplicates (idempotency)
-            if state.current_story not in state.completed_stories:
-                state.completed_stories.append(state.current_story)
+            state.completed_stories.append(state.current_story)
 
         # Save updated state after each phase
         save_state(state, run_dir / "state.yaml")
@@ -973,7 +976,8 @@ class ExperimentRunner:
                 for cache_file in snapshot_cache.glob("*.tpl.xml*"):
                     dest_file = dest_cache / cache_file.name
                     # Only copy if newer or doesn't exist
-                    if not dest_file.exists() or cache_file.stat().st_mtime > dest_file.stat().st_mtime:
+                    newer = cache_file.stat().st_mtime > dest_file.stat().st_mtime
+                    if not dest_file.exists() or newer:
                         shutil.copy2(cache_file, dest_file)
 
         return result

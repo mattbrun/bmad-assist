@@ -313,10 +313,6 @@ class TestDevStoryExecute:
 
         handler = DevStoryHandler(dev_story_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
             patch.object(
@@ -331,7 +327,6 @@ class TestDevStoryExecute:
                     command=("claude", "--print"),
                 ),
             ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
         ):
             result = handler.execute(state_for_dev_story)
 
@@ -352,10 +347,6 @@ class TestDevStoryExecute:
 
         handler = DevStoryHandler(dev_story_config, project_with_story)
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
             patch.object(
@@ -370,7 +361,6 @@ class TestDevStoryExecute:
                     command=("claude", "--print"),
                 ),
             ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
         ):
             result = handler.execute(state_for_dev_story)
 
@@ -414,93 +404,6 @@ class TestDevStoryExecute:
             assert not result.success
             assert result.error is not None
             assert "Handler error" in result.error
-
-
-# =============================================================================
-# Test Interactive Debug Mode
-# =============================================================================
-
-
-class TestDevStoryDebugMode:
-    """Test debug mode integration (AC: #5)."""
-
-    def test_execute_runs_debug_loop_when_enabled(
-        self,
-        dev_story_config: Config,
-        project_with_story: Path,
-        state_for_dev_story: State,
-        handler_yaml_config: Path,
-    ) -> None:
-        """execute() calls debugger.run_debug_loop when debug mode is enabled."""
-        from bmad_assist.core.loop.handlers.dev_story import DevStoryHandler
-
-        handler = DevStoryHandler(dev_story_config, project_with_story)
-
-        # Mock debugger to be enabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = True
-        mock_debugger.run_debug_loop.return_value = True  # Continue execution
-
-        with (
-            patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
-            patch.object(
-                handler,
-                "invoke_provider",
-                return_value=ProviderResult(
-                    stdout="Output",
-                    stderr="",
-                    exit_code=0,
-                    duration_ms=1000,
-                    model="opus-4",
-                    command=("claude", "--print"),
-                ),
-            ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
-        ):
-            result = handler.execute(state_for_dev_story)
-
-            # Debug loop should be called
-            mock_debugger.run_debug_loop.assert_called_once()
-            assert result.success
-
-    def test_execute_returns_failure_on_user_interrupt(
-        self,
-        dev_story_config: Config,
-        project_with_story: Path,
-        state_for_dev_story: State,
-        handler_yaml_config: Path,
-    ) -> None:
-        """execute() returns PhaseResult.fail when user interrupts via debug loop."""
-        from bmad_assist.core.loop.handlers.dev_story import DevStoryHandler
-
-        handler = DevStoryHandler(dev_story_config, project_with_story)
-
-        # Mock debugger to be enabled and return False (user quit)
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = True
-        mock_debugger.run_debug_loop.return_value = False  # User quit
-
-        with (
-            patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
-            patch.object(
-                handler,
-                "invoke_provider",
-                return_value=ProviderResult(
-                    stdout="Output",
-                    stderr="",
-                    exit_code=0,
-                    duration_ms=1000,
-                    model="opus-4",
-                    command=("claude", "--print"),
-                ),
-            ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
-        ):
-            result = handler.execute(state_for_dev_story)
-
-            assert not result.success
-            assert result.error is not None
-            assert "interrupted" in result.error.lower()
 
 
 # =============================================================================
@@ -614,9 +517,6 @@ class TestDevStoryTimingTracking:
 
         handler = DevStoryHandler(config_with_benchmarking_enabled, project_with_story)
 
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
             patch.object(
@@ -631,7 +531,6 @@ class TestDevStoryTimingTracking:
                     command=("claude",),
                 ),
             ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.benchmarking.master_tracking.save_master_timing") as mock_save,
         ):
             result = handler.execute(state_for_dev_story)
@@ -654,9 +553,6 @@ class TestDevStoryTimingTracking:
 
         handler = DevStoryHandler(config_with_benchmarking_disabled, project_with_story)
 
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
             patch.object(
@@ -671,7 +567,6 @@ class TestDevStoryTimingTracking:
                     command=("claude",),
                 ),
             ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.benchmarking.master_tracking.save_master_timing") as mock_save,
         ):
             result = handler.execute(state_for_dev_story)
@@ -690,9 +585,6 @@ class TestDevStoryTimingTracking:
 
         handler = DevStoryHandler(config_with_benchmarking_enabled, project_with_story)
 
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         with (
             patch.object(handler, "render_prompt", return_value="<compiled>test</compiled>"),
             patch.object(
@@ -707,7 +599,6 @@ class TestDevStoryTimingTracking:
                     command=("claude",),
                 ),
             ),
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
             patch("bmad_assist.benchmarking.master_tracking.save_master_timing") as mock_save,
         ):
             result = handler.execute(state_for_dev_story)

@@ -50,13 +50,13 @@ async def get_experiments_fixtures(request: Request) -> JSONResponse:
         tags = [t.strip() for t in tags_param.split(",") if t.strip()]
 
     # Validate difficulty
-    # Support both legacy (easy/medium/hard) and current (trivial/simple/medium/complex/expert) values
+    # Support both legacy (easy/medium/hard) and current (trivial/simple/medium/complex/expert) values # noqa: E501
     valid_difficulties = {"trivial", "simple", "easy", "medium", "complex", "hard", "expert"}
     if difficulty and difficulty.lower() not in valid_difficulties:
         return JSONResponse(
             {
                 "error": "invalid_difficulty",
-                "message": f"Invalid difficulty: {difficulty}. Valid values: trivial, simple, medium, complex, expert",
+                "message": f"Invalid difficulty: {difficulty}. Valid values: trivial, simple, medium, complex, expert", # noqa: E501
             },
             status_code=400,
         )
@@ -67,7 +67,7 @@ async def get_experiments_fixtures(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "error": "invalid_sort_by",
-                "message": f"Invalid sort_by: {sort_by}. Valid values: name, difficulty, estimated_cost, run_count, last_run",
+                "message": f"Invalid sort_by: {sort_by}. Valid values: name, difficulty, estimated_cost, run_count, last_run", # noqa: E501
             },
             status_code=400,
         )
@@ -236,7 +236,7 @@ async def get_experiment_fixture(request: Request) -> JSONResponse:
             tags=list(fixture.tags),
             difficulty=fixture.difficulty or "medium",
             estimated_cost=fixture.estimated_cost or "",
-            estimated_cost_value=parse_cost(fixture.estimated_cost) if fixture.estimated_cost else 0.0,
+            estimated_cost_value=parse_cost(fixture.estimated_cost) if fixture.estimated_cost else 0.0, # noqa: E501
             run_count=run_count,
             last_run=last_run,
             recent_runs=recent_runs,

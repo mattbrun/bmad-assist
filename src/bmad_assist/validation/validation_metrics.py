@@ -81,7 +81,7 @@ EVIDENCE_SCORE_HEADING_PATTERN = re.compile(
 
 # Evidence Score verdict pattern
 EVIDENCE_VERDICT_PATTERN = re.compile(
-    r"\|\s*\*?\*?-?\d+(?:\.\d+)?\*?\*?\s*\|\s*\*?\*?(REJECT|MAJOR REWORK|READY|EXCELLENT)\*?\*?\s*\|",
+    r"\|\s*\*?\*?-?\d+(?:\.\d+)?\*?\*?\s*\|\s*\*?\*?(REJECT|MAJOR REWORK|READY|EXCELLENT)\*?\*?\s*\|", # noqa: E501
     re.IGNORECASE,
 )
 

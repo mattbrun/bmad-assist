@@ -389,12 +389,8 @@ FixtureRegistry = None  # No longer used
 FixtureRegistryManager = FixtureManager  # Alias for compatibility
 
 
-def load_fixture_registry(path: Path, validate_paths: bool = True):
-    """Deprecated: Use FixtureManager instead.
-
-    This function is kept for backwards compatibility but now
-    discovers fixtures from the parent directory of the given path.
-    """
+def load_fixture_registry(path: Path, validate_paths: bool = True) -> list[FixtureEntry]:
+    """Load fixtures from registry (deprecated, use FixtureManager instead)."""
     logger.warning("load_fixture_registry() is deprecated. Use FixtureManager instead.")
     fixtures_dir = path.parent
     return discover_fixtures(fixtures_dir)

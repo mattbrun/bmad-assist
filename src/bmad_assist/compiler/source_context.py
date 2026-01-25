@@ -221,7 +221,7 @@ def _normalize_path(path: str) -> str:
     # Use Path for normalization
     normalized = Path(path)
     # Resolve . and .. but keep relative
-    parts = []
+    parts: list[str] = []
     for part in normalized.parts:
         if part == ".":
             continue
@@ -244,17 +244,13 @@ def _is_test_file(path: str) -> bool:
 
     """
     # Check path patterns
-    for pattern in TEST_PATH_PATTERNS:
-        if pattern in path:
+    for path_pattern in TEST_PATH_PATTERNS:
+        if path_pattern in path:
             return True
 
     # Check filename patterns
     filename = Path(path).name
-    for pattern in TEST_FILE_PATTERNS:
-        if pattern.match(filename):
-            return True
-
-    return False
+    return any(file_pattern.match(filename) for file_pattern in TEST_FILE_PATTERNS)
 
 
 def _is_config_file(path: str) -> bool:
@@ -340,7 +336,7 @@ class SourceContextService:
 
         """
         if not self.is_enabled():
-            logger.debug("Source context disabled for %s (budget=%d)", self.workflow_name, self.budget)
+            logger.debug("Source context disabled for %s (budget=%d)", self.workflow_name, self.budget) # noqa: E501
             return {}
 
         git_diff_files = git_diff_files or []
@@ -735,9 +731,12 @@ class SourceContextService:
         # Build symbol map: (start_line, end_line, name)
         symbols: list[tuple[int, int, str]] = []
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if hasattr(node, "lineno") and hasattr(node, "end_lineno"):
-                    symbols.append((node.lineno, node.end_lineno or node.lineno, node.name))
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and hasattr(node, "lineno")
+                and hasattr(node, "end_lineno")
+            ):
+                symbols.append((node.lineno, node.end_lineno or node.lineno, node.name))
 
         # Find the line where max_chars cuts
         char_count = 0
@@ -753,9 +752,11 @@ class SourceContextService:
         # Find innermost symbol containing cut_line
         containing_symbol: tuple[int, int, str] | None = None
         for start, end, name in symbols:
-            if start <= cut_line <= end:
-                if containing_symbol is None or (start >= containing_symbol[0] and end <= containing_symbol[1]):
-                    containing_symbol = (start, end, name)
+            if start <= cut_line <= end and (
+                containing_symbol is None
+                or (start >= containing_symbol[0] and end <= containing_symbol[1])
+            ):
+                containing_symbol = (start, end, name)
 
         if containing_symbol:
             start, end, name = containing_symbol
@@ -763,12 +764,8 @@ class SourceContextService:
             chars_before_symbol = sum(len(lines[i]) for i in range(start - 1))
             chars_of_symbol = sum(len(lines[i]) for i in range(start - 1, end))
 
-            if chars_before_symbol + chars_of_symbol <= max_chars:
-                # Symbol fits - truncate after symbol
-                truncate_line = end
-            else:
-                # Symbol doesn't fit - truncate before symbol
-                truncate_line = start - 1
+            # Symbol fits after symbol, otherwise truncate before
+            truncate_line = end if chars_before_symbol + chars_of_symbol <= max_chars else start - 1
         else:
             # No symbol found - truncate at line
             truncate_line = cut_line
@@ -854,10 +851,7 @@ def _parse_git_stat(stat_output: str) -> list[tuple[str, int]]:
 
     # Extract stat section (before summary line)
     stat_end = re.search(r"^\s*\d+\s+files?\s+changed", stat_output, re.MULTILINE | re.IGNORECASE)
-    if stat_end:
-        stat_section = stat_output[:stat_end.start()]
-    else:
-        stat_section = stat_output
+    stat_section = stat_output[:stat_end.start()] if stat_end else stat_output
 
     result: list[tuple[str, int]] = []
     seen: set[str] = set()

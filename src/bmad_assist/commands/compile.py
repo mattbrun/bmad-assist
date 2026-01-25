@@ -138,7 +138,7 @@ def compile_command(
         if story is None:
             _error(
                 f"--story is required for workflow '{workflow}'\n"
-                f"  Epic-level workflows (no --story needed): {', '.join(sorted(EPIC_LEVEL_WORKFLOWS))}"
+                f"  Epic-level workflows (no --story needed): {', '.join(sorted(EPIC_LEVEL_WORKFLOWS))}" # noqa: E501
             )
             raise typer.Exit(code=EXIT_CONFIG_ERROR)
         if story < 1:

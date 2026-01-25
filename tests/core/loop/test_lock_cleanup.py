@@ -37,14 +37,14 @@ class TestIsPidAlive:
 
     def test_is_pid_alive_returns_true_for_current_process(self, tmp_path: Path) -> None:
         """AC: _is_pid_alive returns True for the current process PID."""
-        from bmad_assist.core.loop.runner import _is_pid_alive
+        from bmad_assist.core.loop.locking import _is_pid_alive
 
         # Current process should be alive
         assert _is_pid_alive(os.getpid()) is True
 
     def test_is_pid_alive_returns_false_for_nonexistent_pid(self, tmp_path: Path) -> None:
         """AC: _is_pid_alive returns False for a non-existent PID."""
-        from bmad_assist.core.loop.runner import _is_pid_alive
+        from bmad_assist.core.loop.locking import _is_pid_alive
 
         # Use a very high PID that is unlikely to exist
         # PID 99999999 is almost certainly not running
@@ -52,7 +52,7 @@ class TestIsPidAlive:
 
     def test_is_pid_alive_returns_false_for_invalid_pid(self, tmp_path: Path) -> None:
         """AC: _is_pid_alive returns False for invalid PIDs (negative, zero)."""
-        from bmad_assist.core.loop.runner import _is_pid_alive
+        from bmad_assist.core.loop.locking import _is_pid_alive
 
         # Negative PIDs have special meaning in os.kill() and should be rejected
         assert _is_pid_alive(-1) is False
@@ -67,7 +67,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_valid_format(self, tmp_path: Path) -> None:
         """AC: _read_lock_file parses valid lock file format correctly."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "running.lock"
         lock_content = "12345\n2026-01-15T02:53:54.691166+00:00\n"
@@ -79,7 +79,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_with_extra_newlines(self, tmp_path: Path) -> None:
         """AC: _read_lock_file handles extra whitespace correctly."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "running.lock"
         lock_content = "12345\n2026-01-15T02:53:54.691166+00:00\n\n"
@@ -91,7 +91,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_missing_timestamp(self, tmp_path: Path) -> None:
         """AC: _read_lock_file returns (None, None) for incomplete lock file."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "running.lock"
         lock_content = "12345\n"
@@ -103,7 +103,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_invalid_pid(self, tmp_path: Path) -> None:
         """AC: _read_lock_file returns (None, None) for invalid PID."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "running.lock"
         lock_content = "not_a_number\n2026-01-15T02:53:54.691166+00:00\n"
@@ -115,7 +115,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_empty_file(self, tmp_path: Path) -> None:
         """AC: _read_lock_file returns (None, None) for empty file."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "running.lock"
         lock_path.write_text("")
@@ -126,7 +126,7 @@ class TestReadLockFile:
 
     def test_read_lock_file_nonexistent_file(self, tmp_path: Path) -> None:
         """AC: _read_lock_file returns (None, None) for missing file."""
-        from bmad_assist.core.loop.runner import _read_lock_file
+        from bmad_assist.core.loop.locking import _read_lock_file
 
         lock_path = tmp_path / "nonexistent.lock"
 
@@ -140,7 +140,7 @@ class TestRunningLockBasic:
 
     def test_lock_file_created_on_enter(self, tmp_path: Path) -> None:
         """AC 3.1: Lock file created when entering context manager."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -166,7 +166,7 @@ class TestRunningLockBasic:
 
     def test_lock_file_removed_on_normal_exit(self, tmp_path: Path) -> None:
         """AC 3.2: Lock file removed on normal exit (no exception)."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -180,7 +180,7 @@ class TestRunningLockBasic:
 
     def test_lock_file_removed_when_exception_raised(self, tmp_path: Path) -> None:
         """AC 3.3: Lock file removed when exception raised."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -195,7 +195,7 @@ class TestRunningLockBasic:
 
     def test_lock_file_removed_on_keyboard_interrupt(self, tmp_path: Path) -> None:
         """AC 3.4: Lock file removed on KeyboardInterrupt."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -214,7 +214,7 @@ class TestRunningLockBasic:
 
     def test_lock_file_format_correct(self, tmp_path: Path) -> None:
         """AC 3.5: Lock file contains PID and UTC timestamp in correct format."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -239,7 +239,7 @@ class TestRunningLockBasic:
 
     def test_subsequent_run_works_after_lock_cleanup(self, tmp_path: Path) -> None:
         """AC 3.6: Subsequent run works immediately after lock cleanup."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -265,7 +265,7 @@ class TestRunningLockEdgeCases:
 
     def test_lock_cleanup_when_file_manually_deleted_during_run(self, tmp_path: Path) -> None:
         """AC 4.1: Handle lock file manually deleted during run."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -282,7 +282,7 @@ class TestRunningLockEdgeCases:
 
     def test_lock_cleanup_when_directory_deleted_during_run(self, tmp_path: Path) -> None:
         """AC 4.2: Handle .bmad-assist/ directory deleted during run."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
 
@@ -301,7 +301,7 @@ class TestRunningLockEdgeCases:
 
     def test_lock_file_removed_even_if_state_save_fails(self, tmp_path: Path) -> None:
         """AC 3.7: Lock file removed even if state save fails."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -320,7 +320,7 @@ class TestStaleLockDetection:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """AC 3.8: Stale lock detection removes dead PID lock file."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)
@@ -351,7 +351,7 @@ class TestStaleLockDetection:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """AC: Invalid lock files are treated as stale and removed."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)
@@ -377,7 +377,7 @@ class TestStaleLockDetection:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         """AC: Stale lock warning includes the lock timestamp."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)
@@ -403,7 +403,7 @@ class TestActiveLockPrevention:
 
     def test_active_lock_check_aborts_new_run(self, tmp_path: Path) -> None:
         """AC 3.9: Active lock check aborts new run."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)
@@ -426,7 +426,7 @@ class TestActiveLockPrevention:
 
     def test_active_lock_error_message_is_helpful(self, tmp_path: Path) -> None:
         """AC: Error message includes instructions for manual cleanup."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)
@@ -456,7 +456,7 @@ class TestLockFileLifecycle:
 
     def test_lock_lifecycle_create_run_cleanup_run_again(self, tmp_path: Path) -> None:
         """AC: Complete lifecycle: create → run → cleanup → run again."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_path = tmp_path / ".bmad-assist" / "running.lock"
 
@@ -482,7 +482,7 @@ class TestLockFileLifecycle:
 
     def test_multiple_concurrent_lock_attempts_fail(self, tmp_path: Path) -> None:
         """AC: Only one _running_lock context can be active at a time."""
-        from bmad_assist.core.loop.runner import _running_lock
+        from bmad_assist.core.loop.locking import _running_lock
 
         lock_dir = tmp_path / ".bmad-assist"
         lock_dir.mkdir(parents=True, exist_ok=True)

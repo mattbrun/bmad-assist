@@ -23,11 +23,11 @@ from bmad_assist.compiler.shared_utils import (
     resolve_story_file,
     safe_read_file,
 )
-from bmad_assist.compiler.strategic_context import StrategicContextService
 from bmad_assist.compiler.source_context import (
     SourceContextService,
     extract_file_paths_from_story,
 )
+from bmad_assist.compiler.strategic_context import StrategicContextService
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext, WorkflowIR
 from bmad_assist.compiler.variable_utils import substitute_variables
 from bmad_assist.compiler.variables import resolve_variables
@@ -277,7 +277,7 @@ class DevStoryCompiler:
         """Build context files dict with recency-bias ordering.
 
         Files are ordered from general (early) to specific (late):
-        1. Strategic docs via StrategicContextService (project-context, optionally PRD/UX/Architecture)
+        1. Strategic docs via StrategicContextService (project-context, PRD/UX/Arch)
         1b. code-antipatterns.md (if exists - general guidance)
         2. epic file (current epic)
         3. ATDD checklist (if exists)
@@ -302,23 +302,9 @@ class DevStoryCompiler:
         files.update(strategic_files)
 
         # 1b. Include code antipatterns from previous code reviews (if exists)
-        # Position: early in context as general guidance (after strategic docs)
-        epic_num = resolved.get("epic_num")
-        if epic_num is not None:
-            from bmad_assist.core.paths import get_paths
+        from bmad_assist.compiler.strategic_context import load_antipatterns
 
-            try:
-                paths = get_paths()
-                antipatterns_path = (
-                    paths.implementation_artifacts / f"epic-{epic_num}-code-antipatterns.md"
-                )
-                if antipatterns_path.exists():
-                    files["[ANTIPATTERNS - DO NOT REPEAT]"] = antipatterns_path.read_text(
-                        encoding="utf-8"
-                    )
-                    logger.debug("Added code antipatterns to dev-story context")
-            except (RuntimeError, OSError) as e:
-                logger.debug("Could not load code antipatterns: %s", e)
+        files.update(load_antipatterns(context, "code"))
 
         # 2. Epic file (current epic)
         epic_num = resolved.get("epic_num")

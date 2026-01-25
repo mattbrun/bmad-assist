@@ -246,7 +246,7 @@ def sprint_generate(
     effective_auto_exclude = not include_legacy and not is_legacy_only
     generated = generate_from_epics(project_root, auto_exclude_legacy=effective_auto_exclude)
     console.print(
-        f"[dim]Generated {len(generated.entries)} entries from {generated.files_processed} files[/dim]"
+        f"[dim]Generated {len(generated.entries)} entries from {generated.files_processed} files[/dim]" # noqa: E501
     )
 
     if generated.duplicates_skipped > 0:
@@ -353,7 +353,7 @@ def sprint_repair(
 
         if sprint_path.exists() and not is_non_interactive():
             console.print(f"\n[yellow]Warning:[/yellow] This will overwrite {sprint_path}")
-            console.print("[dim]You can restore using BMAD workflow: /bmad:bmm:workflows:sprint-planning[/dim]")
+            console.print("[dim]You can restore using BMAD workflow: /bmad:bmm:workflows:sprint-planning[/dim]") # noqa: E501
             if not typer.confirm("Continue?", default=False):
                 console.print("[dim]Aborted.[/dim]")
                 raise typer.Exit(code=EXIT_SUCCESS)
@@ -606,9 +606,8 @@ def sprint_sync(
     _success(result.summary())
     console.print(f"  Output: {sprint_path}")
 
-    if verbose:
-        if result.skipped_keys:
-            console.print()
-            _warning(f"Skipped {len(result.skipped_keys)} missing keys:")
-            for key in result.skipped_keys:
-                console.print(f"    - {key}")
+    if verbose and result.skipped_keys:
+        console.print()
+        _warning(f"Skipped {len(result.skipped_keys)} missing keys:")
+        for key in result.skipped_keys:
+            console.print(f"    - {key}")

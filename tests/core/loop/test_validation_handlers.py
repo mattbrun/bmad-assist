@@ -190,17 +190,12 @@ class TestValidateStoryHandler:
         async def mock_run_phase(*args: Any, **kwargs: Any) -> ValidationPhaseResult:
             return mock_result
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         # Mock the orchestrator - patch asyncio.run to bypass async
         with (
             patch("bmad_assist.core.loop.handlers.validate_story.asyncio.run") as mock_asyncio_run,
             patch(
                 "bmad_assist.core.loop.handlers.validate_story.save_validations_for_synthesis"
             ) as mock_save,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
         ):
             mock_asyncio_run.return_value = mock_result
             # save_validations_for_synthesis now receives session_id from result
@@ -442,15 +437,10 @@ class TestValidateStorySynthesisHandler:
             current_phase=Phase.VALIDATE_STORY_SYNTHESIS,
         )
 
-        # Mock debugger to be disabled
-        mock_debugger = MagicMock()
-        mock_debugger.is_enabled = False
-
         # Mock compiler and provider
         with (
             patch.object(handler, "render_prompt") as mock_render,
             patch.object(handler, "invoke_provider") as mock_invoke,
-            patch("bmad_assist.core.loop.interactive.get_debugger", return_value=mock_debugger),
         ):
             mock_render.return_value = "<compiled>test synthesis prompt</compiled>"
             mock_invoke.return_value = ProviderResult(

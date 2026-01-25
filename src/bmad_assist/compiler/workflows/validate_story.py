@@ -19,10 +19,6 @@ from bmad_assist.compiler.patching import (
     load_patch,
     validate_output,
 )
-from bmad_assist.compiler.source_context import (
-    SourceContextService,
-    extract_file_paths_from_story,
-)
 from bmad_assist.compiler.shared_utils import (
     apply_post_process,
     context_snapshot,
@@ -35,6 +31,10 @@ from bmad_assist.compiler.shared_utils import (
     normalize_model_name,
     resolve_story_file,
     safe_read_file,
+)
+from bmad_assist.compiler.source_context import (
+    SourceContextService,
+    extract_file_paths_from_story,
 )
 from bmad_assist.compiler.strategic_context import StrategicContextService
 from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext, WorkflowIR

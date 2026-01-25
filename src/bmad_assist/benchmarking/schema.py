@@ -161,8 +161,8 @@ class StoryInfo(BaseModel):
         description="Epic identifier (int or string for modules)",
         json_schema_extra=_src(MetricSource.DETERMINISTIC),
     )
-    story_num: int = Field(
-        description="Story number within epic",
+    story_num: int | str = Field(
+        description="Story number within epic (int or string for modules)",
         json_schema_extra=_src(MetricSource.DETERMINISTIC),
     )
     title: str = Field(

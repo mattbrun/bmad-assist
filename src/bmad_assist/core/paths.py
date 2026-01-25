@@ -97,8 +97,8 @@ class ProjectPaths:
             return resolved.resolve()
 
         # Standard case: resolve {project-root} placeholder
-        resolved = template.replace("{project-root}", str(self.project_root))
-        return Path(resolved).resolve()
+        resolved_str = template.replace("{project-root}", str(self.project_root))
+        return Path(resolved_str).resolve()
 
     def _get_config_path(self, key: str, default: str) -> Path:
         """Get path from config with fallback to default.
@@ -280,6 +280,7 @@ class ProjectPaths:
 
         Returns:
             Path to existing sprint-status.yaml, or None if not found.
+
         """
         for path in self.get_sprint_status_search_locations():
             if path.exists():
@@ -352,6 +353,7 @@ class ProjectPaths:
 
         Raises:
             PermissionError: If external path cannot be created (with clear message).
+
         """
         directories = [
             self.output_folder,

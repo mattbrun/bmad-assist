@@ -41,6 +41,7 @@ def _get_sprint_status_candidates(bmad_path: Path) -> list[Path]:
     The paths singleton handles external paths correctly. Legacy fallbacks
     use bmad_path directly (not bmad_path.parent) since bmad_path IS the
     docs folder where sprint-artifacts/ would be located.
+
     """
     from bmad_assist.core.paths import get_paths
 
@@ -55,7 +56,8 @@ def _get_sprint_status_candidates(bmad_path: Path) -> list[Path]:
         # We derive project_root from bmad_path.parent (valid for default config only).
         project_root = bmad_path.parent
         return [
-            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
+            # New location
+            project_root / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",
             bmad_path / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
             bmad_path / "sprint-status.yaml",  # Legacy (direct)
         ]

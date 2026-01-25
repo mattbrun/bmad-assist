@@ -463,7 +463,7 @@ class PatchSetRegistry:
 
         return self._load_manifest(name, validate_paths)
 
-    @lru_cache(maxsize=32)
+    @lru_cache(maxsize=32)  # noqa: B019
     def _load_manifest(
         self,
         name: str,

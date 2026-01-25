@@ -529,7 +529,7 @@ class TestCalculateSignificance:
         # Should have scipy available in test environment
         if p_val is not None:
             assert p_val < 0.05
-            assert sig is True
+            assert sig == True  # noqa: E712 - numpy bool comparison
 
     def test_sufficient_samples_not_significant(self) -> None:
         """Test with sufficient samples showing no significant difference."""
@@ -543,7 +543,7 @@ class TestCalculateSignificance:
 
         if p_val is not None:
             assert p_val > 0.05
-            assert sig is False
+            assert sig == False  # noqa: E712 - numpy bool comparison
 
     def test_scipy_not_available(self) -> None:
         """Test graceful degradation when scipy is not available."""

@@ -124,12 +124,16 @@ class TestRunLoopIntegration:
         project_path = tmp_path / "project"
         project_path.mkdir()
 
-        # Should complete without error (with mocked phase execution)
+        # Must patch execute_phase in BOTH modules because each imports it separately:
+        # - runner.py: from dispatch import execute_phase (for main loop)
+        # - epic_phases.py: from dispatch import execute_phase (for teardown phases)
+        # Python imports create separate references, so we must patch both
         with patch("bmad_assist.core.loop.runner.execute_phase", return_value=PhaseResult.ok()):
-            with patch("bmad_assist.core.loop.runner.handle_epic_completion") as mock_epic:
-                mock_epic.return_value = (State(), True)
+            with patch("bmad_assist.core.loop.epic_phases.execute_phase", return_value=PhaseResult.ok()):
+                with patch("bmad_assist.core.loop.runner.handle_epic_completion") as mock_epic:
+                    mock_epic.return_value = (State(), True)
 
-                run_loop(config, project_path, [1], lambda x: ["1.1"])
+                    run_loop(config, project_path, [1], lambda x: ["1.1"])
 
     def test_run_loop_with_different_providers(self, tmp_path: Path) -> None:
         """run_loop handles different provider configurations."""
@@ -156,12 +160,13 @@ class TestRunLoopIntegration:
             }
             config = load_config(config_data)
 
-            # Should not raise (with mocked phase execution)
+            # Must patch execute_phase in BOTH modules (each imports it separately)
             with patch("bmad_assist.core.loop.runner.execute_phase", return_value=PhaseResult.ok()):
-                with patch("bmad_assist.core.loop.runner.handle_epic_completion") as mock_epic:
-                    mock_epic.return_value = (State(), True)
+                with patch("bmad_assist.core.loop.epic_phases.execute_phase", return_value=PhaseResult.ok()):
+                    with patch("bmad_assist.core.loop.runner.handle_epic_completion") as mock_epic:
+                        mock_epic.return_value = (State(), True)
 
-                    run_loop(config, tmp_path, [1], lambda x: ["1.1"])
+                        run_loop(config, tmp_path, [1], lambda x: ["1.1"])
 
 
 class TestRunLoopFreshStart:
@@ -443,17 +448,27 @@ class TestRunLoopStoryCompletion:
 
         with patch("bmad_assist.core.loop.runner.load_state", return_value=state):
             with patch("bmad_assist.core.loop.runner.execute_phase", return_value=PhaseResult.ok()):
-                with patch("bmad_assist.core.loop.runner.save_state", side_effect=track_save):
-                    with patch(
-                        "bmad_assist.core.loop.runner.handle_story_completion"
-                    ) as mock_story:
-                        mock_story.return_value = (completed_state, True)  # is_epic_complete=True
+                with patch(
+                    "bmad_assist.core.loop.epic_phases.execute_phase", return_value=PhaseResult.ok()
+                ):
+                    # Both runner and epic_phases import save_state separately
+                    with patch("bmad_assist.core.loop.runner.save_state", side_effect=track_save):
                         with patch(
-                            "bmad_assist.core.loop.runner.handle_epic_completion"
-                        ) as mock_epic:
-                            mock_epic.return_value = (completed_state, True)
+                            "bmad_assist.core.loop.epic_phases.save_state", side_effect=track_save
+                        ):
+                            with patch(
+                                "bmad_assist.core.loop.runner.handle_story_completion"
+                            ) as mock_story:
+                                mock_story.return_value = (
+                                    completed_state,
+                                    True,
+                                )  # is_epic_complete=True
+                                with patch(
+                                    "bmad_assist.core.loop.runner.handle_epic_completion"
+                                ) as mock_epic:
+                                    mock_epic.return_value = (completed_state, True)
 
-                            run_loop(config, tmp_path, [1], lambda x: ["1.1", "1.1"])
+                                    run_loop(config, tmp_path, [1], lambda x: ["1.1", "1.1"])
 
         # Should have saved state with RETROSPECTIVE phase
         retrospective_saves = [s for s in saved_states if s.current_phase == Phase.RETROSPECTIVE]
@@ -878,29 +893,32 @@ class TestRunLoopIntegrationFull:
 
         with patch("bmad_assist.core.loop.runner.load_state", return_value=State()):
             with patch("bmad_assist.core.loop.runner.execute_phase", side_effect=track_execute):
-                with patch("bmad_assist.core.loop.runner.save_state"):
-                    with patch(
-                        "bmad_assist.core.loop.runner.handle_story_completion"
-                    ) as mock_story:
-                        completed_state = State(
-                            current_epic=1,
-                            current_story="1.1",
-                            current_phase=Phase.CODE_REVIEW_SYNTHESIS,
-                            completed_stories=["1.1"],
-                        )
-                        mock_story.return_value = (completed_state, True)  # Last in epic
+                with patch(
+                    "bmad_assist.core.loop.epic_phases.execute_phase", side_effect=track_execute
+                ):
+                    with patch("bmad_assist.core.loop.runner.save_state"):
                         with patch(
-                            "bmad_assist.core.loop.runner.handle_epic_completion"
-                        ) as mock_epic:
-                            final_state = State(
+                            "bmad_assist.core.loop.runner.handle_story_completion"
+                        ) as mock_story:
+                            completed_state = State(
                                 current_epic=1,
                                 current_story="1.1",
-                                current_phase=Phase.RETROSPECTIVE,
-                                completed_epics=[1],
+                                current_phase=Phase.CODE_REVIEW_SYNTHESIS,
+                                completed_stories=["1.1"],
                             )
-                            mock_epic.return_value = (final_state, True)  # Project complete
+                            mock_story.return_value = (completed_state, True)  # Last in epic
+                            with patch(
+                                "bmad_assist.core.loop.runner.handle_epic_completion"
+                            ) as mock_epic:
+                                final_state = State(
+                                    current_epic=1,
+                                    current_story="1.1",
+                                    current_phase=Phase.RETROSPECTIVE,
+                                    completed_epics=[1],
+                                )
+                                mock_epic.return_value = (final_state, True)  # Project complete
 
-                            run_loop(config, tmp_path, [1], lambda x: ["1.1"])
+                                run_loop(config, tmp_path, [1], lambda x: ["1.1"])
 
         # Should have executed 7 phases (testarch disabled, ATDD and TEST_REVIEW skipped)
         # With testarch enabled, would be 9 phases
@@ -1024,7 +1042,8 @@ class TestArchiveArtifacts:
         script_path.write_text("#!/bin/bash\nexit 0\n")
         script_path.chmod(0o755)
 
-        with patch("bmad_assist.core.loop.runner.subprocess.run") as mock_run:
+        # subprocess is imported in sprint_sync.py, not runner.py
+        with patch("bmad_assist.core.loop.sprint_sync.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             _run_archive_artifacts(tmp_path)
 
@@ -1037,7 +1056,8 @@ class TestArchiveArtifacts:
         """Archive is skipped gracefully when script doesn't exist."""
         from bmad_assist.core.loop.runner import _run_archive_artifacts
 
-        with patch("bmad_assist.core.loop.runner.subprocess.run") as mock_run:
+        # subprocess is imported in sprint_sync.py, not runner.py
+        with patch("bmad_assist.core.loop.sprint_sync.subprocess.run") as mock_run:
             _run_archive_artifacts(tmp_path)
 
         mock_run.assert_not_called()
@@ -1053,7 +1073,8 @@ class TestArchiveArtifacts:
         script_path.write_text("#!/bin/bash\nexit 1\n")
         script_path.chmod(0o755)
 
-        with patch("bmad_assist.core.loop.runner.subprocess.run") as mock_run:
+        # subprocess is imported in sprint_sync.py, not runner.py
+        with patch("bmad_assist.core.loop.sprint_sync.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="error")
             # Should not raise
             _run_archive_artifacts(tmp_path)

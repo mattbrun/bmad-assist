@@ -136,11 +136,15 @@ def _load_with_comments(path: Path) -> tuple[dict[str, Any] | None, dict[str, st
 
         # Extract inline comments from development_status entries
         dev_status = data.get("development_status")
-        if dev_status is not None and isinstance(dev_status, CommentedMap):
+        if (
+            dev_status is not None
+            and isinstance(dev_status, CommentedMap)
+            and hasattr(dev_status, "ca")
+            and hasattr(dev_status.ca, "items")
+        ):
             # ruamel stores comments in .ca (Comment Attribute) structure
             # ca.items[key] contains tuples: (pre-comment, inline-comment, ...)
-            if hasattr(dev_status, "ca") and hasattr(dev_status.ca, "items"):
-                for key in dev_status:
+            for key in dev_status:
                     comment_token = dev_status.ca.items.get(key)
                     if comment_token is not None:
                         # Structure: [pre_comment, inline_comment, post_comment, ...]
@@ -276,7 +280,7 @@ def _extract_epic_id(key: str) -> str | int | None:
     return None
 
 
-def _add_epic_comments(dev_status: "CommentedMap") -> None:
+def _add_epic_comments(dev_status: CommentedMap) -> None:
     """Add epic separator comments to development_status CommentedMap.
 
     Adds `# Epic X` comment before the first entry of each epic group.
@@ -304,9 +308,13 @@ def _add_epic_comments(dev_status: "CommentedMap") -> None:
     if hasattr(dev_status, "ca"):
         # Clear section-level "before" comment (for first key)
         # ca.comment[1] is a list - must clear the list, not set to None
-        if hasattr(dev_status.ca, "comment") and dev_status.ca.comment:
-            if len(dev_status.ca.comment) > 1 and isinstance(dev_status.ca.comment[1], list):
-                dev_status.ca.comment[1].clear()
+        if (
+            hasattr(dev_status.ca, "comment")
+            and dev_status.ca.comment
+            and len(dev_status.ca.comment) > 1
+            and isinstance(dev_status.ca.comment[1], list)
+        ):
+            dev_status.ca.comment[1].clear()
 
         # Clear per-key comments (both before [1] and after [2])
         if hasattr(dev_status.ca, "items"):
@@ -423,7 +431,7 @@ def _write_with_ruamel(
             # Re-order keys to match model's entry order (AC3)
             # move_to_end(last=True) moves each key to end in sequence,
             # resulting in the same order as new_data_dev
-            for key in new_data_dev.keys():
+            for key in new_data_dev:
                 if key in dev_status:
                     dev_status.move_to_end(key, last=True)
 

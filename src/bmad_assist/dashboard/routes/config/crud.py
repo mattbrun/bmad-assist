@@ -160,7 +160,7 @@ async def put_config_project(request: Request) -> JSONResponse:
 
 
 async def _put_config(request: Request, scope: str) -> JSONResponse:
-    """Common implementation for PUT /api/config/{scope}.
+    """Handle PUT /api/config/{scope} request.
 
     Args:
         request: Starlette request.

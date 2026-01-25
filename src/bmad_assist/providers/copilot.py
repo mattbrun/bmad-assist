@@ -16,6 +16,11 @@ Output Format:
 Command Format:
     copilot -p "<PROMPT>" --allow-all-tools --yolo --model "<MODEL>"
 
+Large Prompt Handling:
+    Uses platform_command module for prompts >=100KB to avoid ARG_MAX limits
+    on POSIX systems. Large prompts are written to a temp file and read via
+    shell command substitution.
+
 Example:
     >>> from bmad_assist.providers import CopilotProvider
     >>> provider = CopilotProvider()
@@ -26,22 +31,28 @@ Example:
 
 import logging
 import os
-import threading
 import time
 from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
-from typing import Any
 
 from bmad_assist.core.exceptions import (
     ProviderError,
     ProviderExitCodeError,
     ProviderTimeoutError,
 )
+from bmad_assist.core.platform_command import (
+    build_cross_platform_command,
+    cleanup_temp_file,
+)
 from bmad_assist.providers.base import (
+    MAX_RETRIES,
     BaseProvider,
     ExitStatus,
     ProviderResult,
+    calculate_retry_delay,
     format_tag,
+    is_transient_error,
+    start_stream_reader_threads,
     validate_settings_file,
     write_progress,
 )
@@ -51,9 +62,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT: int = 300
 PROMPT_TRUNCATE_LENGTH: int = 100
 STDERR_TRUNCATE_LENGTH: int = 200
-MAX_RETRIES: int = 5
-RETRY_BASE_DELAY: float = 2.0
-RETRY_MAX_DELAY: float = 30.0
 
 
 def _truncate_prompt(prompt: str) -> str:
@@ -136,6 +144,8 @@ class CopilotProvider(BaseProvider):
         Command Format:
             copilot -p "<PROMPT>" --allow-all-tools --yolo --model "<MODEL>"
 
+        For large prompts (>=100KB), uses temp file to avoid ARG_MAX limits.
+
         Args:
             prompt: The prompt text to send to Copilot.
             model: Model to use. If None, uses default_model.
@@ -181,7 +191,13 @@ class CopilotProvider(BaseProvider):
             cwd,
         )
 
-        command: list[str] = [
+        # Build command with platform-aware large prompt handling
+        # Args before prompt: -p, --allow-all-tools, --yolo, --model, <model>
+        base_args = ["-p", "--allow-all-tools", "--yolo", "--model", effective_model]
+        command, temp_file = build_cross_platform_command("copilot", base_args, prompt)
+
+        # For ProviderResult, we need original command structure (without shell wrapper)
+        original_command: tuple[str, ...] = (
             "copilot",
             "-p",
             prompt,
@@ -189,7 +205,7 @@ class CopilotProvider(BaseProvider):
             "--yolo",
             "--model",
             effective_model,
-        ]
+        )
 
         last_error: ProviderExitCodeError | None = None
         returncode: int = 0
@@ -197,154 +213,154 @@ class CopilotProvider(BaseProvider):
         stderr_content: str = ""
         stdout_content: str = ""
 
-        for attempt in range(MAX_RETRIES):
-            if attempt > 0:
-                delay = min(RETRY_BASE_DELAY * (2 ** (attempt - 1)), RETRY_MAX_DELAY)
-                logger.warning(
-                    "Copilot CLI retry %d/%d after %.1fs delay (previous: %s)",
-                    attempt + 1,
-                    MAX_RETRIES,
-                    delay,
-                    last_error,
-                )
-                time.sleep(delay)
+        try:
+            for attempt in range(MAX_RETRIES):
+                if attempt > 0:
+                    delay = calculate_retry_delay(attempt - 1)
+                    logger.warning(
+                        "Copilot CLI retry %d/%d after %.1fs delay (previous: %s)",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        delay,
+                        last_error,
+                    )
+                    time.sleep(delay)
 
-            stdout_chunks: list[str] = []
-            stderr_chunks: list[str] = []
-            start_time = time.perf_counter()
-            print_output = logger.isEnabledFor(logging.DEBUG)
+                stdout_chunks: list[str] = []
+                stderr_chunks: list[str] = []
+                start_time = time.perf_counter()
+                print_output = logger.isEnabledFor(logging.DEBUG)
 
-            try:
-                env = os.environ.copy()
-                if cwd is not None:
-                    env["PWD"] = str(cwd)
-
-                process = Popen(
-                    command,
-                    stdin=PIPE,
-                    stdout=PIPE,
-                    stderr=PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    cwd=cwd,
-                    env=env,
-                )
-
-                if process.stdin:
-                    process.stdin.close()
-
-                def read_stdout(
-                    stream: Any,
-                    chunks: list[str],
-                    print_lines: bool,
-                    color_idx: int | None,
-                ) -> None:
-                    """Read stdout stream."""
-                    for line in iter(stream.readline, ""):
-                        chunks.append(line)
-                        if print_lines:
-                            stripped = line.rstrip()
-                            tag = format_tag("OUT", color_idx)
-                            write_progress(f"{tag} {stripped}")
-                    stream.close()
-
-                def read_stderr(
-                    stream: Any,
-                    chunks: list[str],
-                    print_lines: bool,
-                    color_idx: int | None,
-                ) -> None:
-                    """Read stderr stream."""
-                    for line in iter(stream.readline, ""):
-                        chunks.append(line)
-                        if print_lines:
-                            stripped = line.rstrip()
-                            tag = format_tag("ERR", color_idx)
-                            write_progress(f"{tag} {stripped}")
-                    stream.close()
-
-                stdout_thread = threading.Thread(
-                    target=read_stdout,
-                    args=(process.stdout, stdout_chunks, print_output, color_index),
-                )
-                stderr_thread = threading.Thread(
-                    target=read_stderr,
-                    args=(process.stderr, stderr_chunks, print_output, color_index),
-                )
-                stdout_thread.start()
-                stderr_thread.start()
+                # Create callbacks for stream readers
+                stdout_callback = None
+                stderr_callback = None
 
                 if print_output:
-                    shown_model = display_model or effective_model
-                    tag = format_tag("START", color_index)
-                    write_progress(f"{tag} Invoking Copilot CLI (model={shown_model})...")
+
+                    def _stdout_cb(line: str) -> None:
+                        stripped = line.rstrip()
+                        tag = format_tag("OUT", color_index)
+                        write_progress(f"{tag} {stripped}")
+
+                    def _stderr_cb(line: str) -> None:
+                        stripped = line.rstrip()
+                        tag = format_tag("ERR", color_index)
+                        write_progress(f"{tag} {stripped}")
+
+                    stdout_callback = _stdout_cb
+                    stderr_callback = _stderr_cb
 
                 try:
-                    returncode = process.wait(timeout=effective_timeout)
-                except TimeoutExpired:
-                    process.kill()
-                    stdout_thread.join(timeout=2)
-                    stderr_thread.join(timeout=2)
-                    duration_ms = int((time.perf_counter() - start_time) * 1000)
-                    truncated = _truncate_prompt(prompt)
+                    env = os.environ.copy()
+                    if cwd is not None:
+                        env["PWD"] = str(cwd)
 
-                    partial_result = ProviderResult(
-                        stdout="".join(stdout_chunks),
-                        stderr="".join(stderr_chunks),
-                        exit_code=-1,
-                        duration_ms=duration_ms,
-                        model=effective_model,
-                        command=tuple(command),
+                    process = Popen(
+                        command,
+                        stdin=PIPE,
+                        stdout=PIPE,
+                        stderr=PIPE,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        cwd=cwd,
+                        env=env,
                     )
 
-                    raise ProviderTimeoutError(
-                        f"Copilot CLI timeout after {effective_timeout}s: {truncated}",
-                        partial_result=partial_result,
-                    ) from None
+                    if process.stdin:
+                        process.stdin.close()
 
-                stdout_thread.join()
-                stderr_thread.join()
+                    # Use shared helper for stream reader threads
+                    stdout_thread, stderr_thread = start_stream_reader_threads(
+                        process,
+                        stdout_chunks,
+                        stderr_chunks,
+                        stdout_callback=stdout_callback,
+                        stderr_callback=stderr_callback,
+                    )
 
-            except FileNotFoundError as e:
-                logger.error("Copilot CLI not found in PATH")
-                raise ProviderError("Copilot CLI not found. Is 'copilot' in PATH?") from e
+                    if print_output:
+                        shown_model = display_model or effective_model
+                        tag = format_tag("START", color_index)
+                        write_progress(
+                            f"{tag} Invoking Copilot CLI (model={shown_model})..."
+                        )
 
-            duration_ms = int((time.perf_counter() - start_time) * 1000)
-            stdout_content = "".join(stdout_chunks)
-            stderr_content = "".join(stderr_chunks)
+                    try:
+                        returncode = process.wait(timeout=effective_timeout)
+                    except TimeoutExpired:
+                        process.kill()
+                        stdout_thread.join(timeout=2)
+                        stderr_thread.join(timeout=2)
+                        duration_ms = int((time.perf_counter() - start_time) * 1000)
+                        truncated = _truncate_prompt(prompt)
 
-            if returncode != 0:
-                exit_status = ExitStatus.from_code(returncode)
-                stderr_truncated = (
-                    stderr_content[:STDERR_TRUNCATE_LENGTH] if stderr_content else "(empty)"
-                )
+                        partial_result = ProviderResult(
+                            stdout="".join(stdout_chunks),
+                            stderr="".join(stderr_chunks),
+                            exit_code=-1,
+                            duration_ms=duration_ms,
+                            model=effective_model,
+                            command=original_command,
+                        )
 
-                logger.error(
-                    "Copilot CLI failed: exit_code=%d, status=%s, model=%s, stderr=%s",
-                    returncode,
-                    exit_status.name,
-                    effective_model,
-                    stderr_truncated,
-                )
+                        raise ProviderTimeoutError(
+                            f"Copilot CLI timeout after {effective_timeout}s: {truncated}",
+                            partial_result=partial_result,
+                        ) from None
 
-                message = f"Copilot CLI failed with exit code {returncode}: {stderr_truncated}"
-                error = ProviderExitCodeError(
-                    message,
-                    exit_code=returncode,
-                    exit_status=exit_status,
-                    stderr=stderr_content,
-                    command=tuple(command),
-                )
+                    stdout_thread.join()
+                    stderr_thread.join()
 
-                is_transient = not stderr_content.strip() and exit_status == ExitStatus.ERROR
-                if is_transient and attempt < MAX_RETRIES - 1:
-                    last_error = error
-                    continue
+                except FileNotFoundError as e:
+                    logger.error("Copilot CLI not found in PATH")
+                    raise ProviderError(
+                        "Copilot CLI not found. Is 'copilot' in PATH?"
+                    ) from e
 
-                raise error
+                duration_ms = int((time.perf_counter() - start_time) * 1000)
+                stdout_content = "".join(stdout_chunks)
+                stderr_content = "".join(stderr_chunks)
 
-            break
+                if returncode != 0:
+                    exit_status = ExitStatus.from_code(returncode)
+                    stderr_truncated = (
+                        stderr_content[:STDERR_TRUNCATE_LENGTH]
+                        if stderr_content
+                        else "(empty)"
+                    )
+
+                    logger.error(
+                        "Copilot CLI failed: exit_code=%d, status=%s, model=%s, stderr=%s",
+                        returncode,
+                        exit_status.name,
+                        effective_model,
+                        stderr_truncated,
+                    )
+
+                    message = (
+                        f"Copilot CLI failed with exit code {returncode}: "
+                        f"{stderr_truncated}"
+                    )
+                    error = ProviderExitCodeError(
+                        message,
+                        exit_code=returncode,
+                        exit_status=exit_status,
+                        stderr=stderr_content,
+                        command=original_command,
+                    )
+
+                    # Use shared helper for transient error detection
+                    if is_transient_error(stderr_content, exit_status) and attempt < MAX_RETRIES - 1: # noqa: E501
+                        last_error = error
+                        continue
+
+                    raise error
+
+                break
+        finally:
+            # Always cleanup temp file if created
+            cleanup_temp_file(temp_file)
 
         logger.info(
             "Copilot CLI completed: duration=%dms, exit_code=%d, text_len=%d",
@@ -359,7 +375,7 @@ class CopilotProvider(BaseProvider):
             exit_code=returncode,
             duration_ms=duration_ms,
             model=effective_model,
-            command=tuple(command),
+            command=original_command,
         )
 
     def parse_output(self, result: ProviderResult) -> str:

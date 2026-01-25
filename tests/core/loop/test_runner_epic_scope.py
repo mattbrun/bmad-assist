@@ -68,8 +68,11 @@ class TestEpicSetup:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -148,8 +151,11 @@ class TestEpicSetup:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -212,8 +218,11 @@ class TestEpicSetup:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -257,8 +266,11 @@ class TestEpicSetup:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -335,8 +347,11 @@ class TestEpicTeardown:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -407,8 +422,11 @@ class TestEpicTeardown:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -480,8 +498,11 @@ class TestEpicTeardown:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -569,8 +590,11 @@ class TestEpicTeardown:
             with patch(
                 "bmad_assist.core.loop.runner.execute_phase",
                 side_effect=mock_execute_phase,
+            ), patch(
+                "bmad_assist.core.loop.epic_phases.execute_phase",
+                side_effect=mock_execute_phase,
             ):
-                with patch("bmad_assist.core.loop.runner.save_state"):
+                with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                     with patch(
                         "bmad_assist.core.config.get_loop_config",
                         return_value=test_loop_config,
@@ -695,7 +719,7 @@ class TestFullEpicCycle:
         with patch(
             "bmad_assist.core.loop.runner.execute_phase", return_value=PhaseResult.ok()
         ):
-            with patch("bmad_assist.core.loop.runner.save_state"):
+            with patch("bmad_assist.core.loop.runner.save_state"), patch("bmad_assist.core.loop.epic_phases.save_state"):
                 with patch(
                     "bmad_assist.core.config.get_loop_config", return_value=test_loop_config
                 ):

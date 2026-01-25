@@ -50,6 +50,13 @@ from bmad_assist.core.loop.handlers_stub import (
     validate_story_synthesis_handler,
 )
 
+# Locking (re-exports for backward compatibility - tests may import from loop)
+from bmad_assist.core.loop.locking import (
+    _is_pid_alive,
+    _read_lock_file,
+    _running_lock,
+)
+
 # Runner
 from bmad_assist.core.loop.runner import run_loop
 
@@ -149,4 +156,8 @@ __all__ = [
     # Guardian
     "get_next_phase",
     "guardian_check_anomaly",
+    # Locking
+    "_is_pid_alive",
+    "_read_lock_file",
+    "_running_lock",
 ]

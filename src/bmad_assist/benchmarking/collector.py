@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-import textstat  # type: ignore[import-untyped]
+import textstat
 
 from bmad_assist.benchmarking.schema import (
     LinguisticFingerprint,
@@ -83,7 +83,7 @@ class CollectorContext:
     """
 
     story_epic: EpicId
-    story_num: int
+    story_num: int | str
     timestamp: datetime
 
 

@@ -222,13 +222,9 @@ def _is_markdown_content(content: str) -> bool:
     if stripped.startswith("#"):
         return True
 
-    # If it starts with an XML tag, it's XML
-    if stripped.startswith("<"):
-        return False
-
-    # If it doesn't start with < or #, assume markdown
+    # If it starts with an XML tag, it's XML; otherwise assume markdown
     # (could be text paragraph, list, etc.)
-    return True
+    return not stripped.startswith("<")
 
 
 def filter_instructions(workflow_ir: WorkflowIR) -> str:

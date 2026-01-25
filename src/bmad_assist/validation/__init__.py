@@ -69,6 +69,22 @@ from bmad_assist.validation.benchmarking_integration import (
     create_synthesizer_record,
     should_collect_benchmarking,
 )
+from bmad_assist.validation.evidence_score import (
+    AllValidatorsFailedError,
+    CacheFormatError,
+    CacheVersionError,
+    EvidenceFinding,
+    EvidenceScoreAggregate,
+    EvidenceScoreError,
+    EvidenceScoreReport,
+    Severity,
+    Verdict,
+    aggregate_evidence_scores,
+    calculate_evidence_score,
+    determine_verdict,
+    format_evidence_score_context,
+    parse_evidence_findings,
+)
 from bmad_assist.validation.orchestrator import (
     InsufficientValidationsError,
     ValidationError,
@@ -86,22 +102,6 @@ from bmad_assist.validation.reports import (
 from bmad_assist.validation.synthesis_parser import (
     SynthesisMetrics,
     extract_synthesis_metrics,
-)
-from bmad_assist.validation.evidence_score import (
-    AllValidatorsFailedError,
-    CacheFormatError,
-    CacheVersionError,
-    EvidenceFinding,
-    EvidenceScoreAggregate,
-    EvidenceScoreError,
-    EvidenceScoreReport,
-    Severity,
-    Verdict,
-    aggregate_evidence_scores,
-    calculate_evidence_score,
-    determine_verdict,
-    format_evidence_score_context,
-    parse_evidence_findings,
 )
 
 __all__ = [

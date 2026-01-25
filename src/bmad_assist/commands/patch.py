@@ -30,7 +30,8 @@ patch_app = typer.Typer(
 def _find_workflow_files(workflow: str, project_root: Path) -> tuple[Path, Path]:
     """Find workflow.yaml and instructions.xml for a workflow.
 
-    Searches in _bmad/bmm/workflows/*/{workflow}/ (new) or .bmad/bmm/workflows/*/{workflow}/ (legacy).
+    Searches in _bmad/bmm/workflows/*/{workflow}/ (new) or
+    .bmad/bmm/workflows/*/{workflow}/ (legacy).
 
     Args:
         workflow: Workflow name (e.g., "create-story").
@@ -388,10 +389,7 @@ def patch_compile_all(
         return
 
     # Filter patches that need compilation
-    if force:
-        to_compile = patches
-    else:
-        to_compile = [p for p in patches if p["status"] in ("missing", "stale")]
+    to_compile = patches if force else [p for p in patches if p["status"] in ("missing", "stale")]
 
     if not to_compile:
         console.print("[green]All patches are up to date.[/green]")

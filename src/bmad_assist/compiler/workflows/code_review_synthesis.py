@@ -41,13 +41,6 @@ from bmad_assist.compiler.shared_utils import (
     resolve_story_file,
     safe_read_file,
 )
-from bmad_assist.compiler.strategic_context import StrategicContextService
-from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext
-from bmad_assist.compiler.variable_utils import (
-    filter_garbage_variables,
-    substitute_variables,
-)
-from bmad_assist.compiler.variables import resolve_variables
 
 # Reuse git diff functions from code_review.py (until Epic 12 consolidation)
 from bmad_assist.compiler.source_context import (
@@ -55,6 +48,13 @@ from bmad_assist.compiler.source_context import (
     extract_file_paths_from_story,
     get_git_diff_files,
 )
+from bmad_assist.compiler.strategic_context import StrategicContextService
+from bmad_assist.compiler.types import CompiledWorkflow, CompilerContext
+from bmad_assist.compiler.variable_utils import (
+    filter_garbage_variables,
+    substitute_variables,
+)
+from bmad_assist.compiler.variables import resolve_variables
 from bmad_assist.compiler.workflows.code_review import (
     _capture_git_diff,
     _extract_modified_files_from_stat,
@@ -254,6 +254,11 @@ class CodeReviewSynthesisCompiler:
         strategic_files = strategic_service.collect()
         files.update(strategic_files)
         logger.debug("Added %d strategic docs to synthesis context", len(strategic_files))
+
+        # 1b. Include code antipatterns - synthesis should reference known issues
+        from bmad_assist.compiler.strategic_context import load_antipatterns
+
+        files.update(load_antipatterns(context, "code"))
 
         # 2. Reviews (each as a separate file for clean CDATA handling)
         # Sort by reviewer_id for deterministic ordering

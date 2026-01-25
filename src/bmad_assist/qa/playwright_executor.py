@@ -491,13 +491,14 @@ def generate_spec_file(
 ) -> Path:
     """Generate Playwright spec file from test cases.
 
-    Combines all TypeScript test blocks into a single spec file
+    Combine all TypeScript test blocks into a single spec file
     that Playwright can execute.
 
     Args:
         tests: List of Category B test cases with TypeScript scripts.
         epic_id: Epic identifier.
         output_dir: Directory to write spec file.
+        base_url: Base URL for the test server.
 
     Returns:
         Path to generated spec file.

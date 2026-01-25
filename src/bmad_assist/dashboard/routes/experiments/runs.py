@@ -7,7 +7,6 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -315,7 +314,7 @@ async def post_experiment_run(request: Request) -> JSONResponse:
 
             # Check loops
             loops = await discover_loops(experiments_dir)
-            loop_names = [l[0] for l in loops]
+            loop_names = [loop_entry[0] for loop_entry in loops]
             if run_request.loop not in loop_names:
                 return JSONResponse(
                     {"error": "bad_request", "message": f"Loop not found: {run_request.loop}"},
@@ -366,7 +365,7 @@ async def post_experiment_run(request: Request) -> JSONResponse:
         return JSONResponse(
             {
                 "error": "not_implemented",
-                "message": "Experiment execution via dashboard is not yet supported. Use CLI: `bmad-assist experiment run ...`",
+                "message": "Experiment execution via dashboard is not yet supported. Use CLI: `bmad-assist experiment run ...`", # noqa: E501
             },
             status_code=501,
         )

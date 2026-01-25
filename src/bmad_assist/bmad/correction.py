@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 
-import frontmatter  # type: ignore[import-untyped]
+import frontmatter
 import yaml
 
 from bmad_assist.bmad.discrepancy import Discrepancy, StateComparable

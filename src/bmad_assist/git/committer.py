@@ -95,7 +95,7 @@ def get_modified_files(project_path: Path) -> list[str]:
         return []
 
     # Directories to exclude from auto-commit (generated artifacts)
-    EXCLUDE_PREFIXES = (
+    exclude_prefixes = (
         "_bmad-output/",
         ".bmad-assist/prompts/",
         ".bmad-assist/cache/",
@@ -113,7 +113,7 @@ def get_modified_files(project_path: Path) -> list[str]:
                 filename = filename.split(" -> ")[1]
 
             # Skip files in excluded directories
-            if any(filename.startswith(prefix) for prefix in EXCLUDE_PREFIXES):
+            if any(filename.startswith(prefix) for prefix in exclude_prefixes):
                 continue
 
             files.append(filename)
@@ -213,7 +213,7 @@ def _generate_conventional_message(
     # RETROSPECTIVE uses epic-based scope; other phases use story-based scope
     if phase == Phase.RETROSPECTIVE:
         # Extract epic from story_id (e.g., "22.11" -> "22", "testarch.1" -> "testarch")
-        epic_id = story_id.split(".")[0] if story_id and "." in story_id else (story_id or "unknown")
+        epic_id = story_id.split(".")[0] if story_id and "." in story_id else (story_id or "unknown") # noqa: E501
         scope = f"epic-{epic_id}"
         description = f"archive epic {epic_id} retrospective"
     else:

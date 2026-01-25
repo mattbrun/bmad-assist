@@ -195,7 +195,7 @@ def validate_resume_state(
         # Fallback for tests or early startup when singleton not initialized
         # Check multiple locations for consistency with state_reader.py
         fallback_candidates = [
-            project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New
+            project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",  # New # noqa: E501
             project_path / "docs" / "sprint-artifacts" / "sprint-status.yaml",  # Legacy
             project_path / "docs" / "sprint-status.yaml",  # Legacy (direct)
         ]
@@ -255,6 +255,9 @@ def validate_resume_state(
             logger.debug("No current epic set, cannot validate")
             break
 
+        # Type narrowing: current_epic is guaranteed non-None from here
+        current_epic: EpicId = current_state.current_epic
+
         # CRITICAL: If we're in RETROSPECTIVE phase, don't skip anything.
         # The loop needs to execute the retrospective - we shouldn't try to
         # advance past it just because stories are done.
@@ -263,19 +266,19 @@ def validate_resume_state(
             break
 
         # Check if current epic is done in sprint-status (including retrospective)
-        if _is_epic_done_in_sprint(current_state.current_epic, sprint_status):
+        if _is_epic_done_in_sprint(current_epic, sprint_status):
             # Epic is done - add to completed_epics if not already there
-            if current_state.current_epic not in current_state.completed_epics:
+            if current_epic not in current_state.completed_epics:
                 logger.info(
                     "Sprint-status shows epic %s is done, adding to completed_epics",
-                    current_state.current_epic,
+                    current_epic,
                 )
-                epics_skipped.append(current_state.current_epic)
+                epics_skipped.append(current_epic)
                 current_state = current_state.model_copy(
                     update={
                         "completed_epics": [
                             *current_state.completed_epics,
-                            current_state.current_epic,
+                            current_epic,
                         ],
                         "updated_at": now,
                     }
@@ -283,7 +286,7 @@ def validate_resume_state(
 
             # Find next epic that's not done
             next_epic = _find_next_incomplete_epic(
-                current_state.current_epic,
+                current_epic,
                 epic_list,
                 current_state.completed_epics,
                 sprint_status,
@@ -352,15 +355,16 @@ def validate_resume_state(
 
             # Get stories for current epic
             try:
-                epic_stories = epic_stories_loader(current_state.current_epic)
+                epic_stories = epic_stories_loader(current_epic)
             except Exception as e:
                 raise StateError(
-                    f"Failed to load stories for epic {current_state.current_epic}: {e}"
+                    f"Failed to load stories for epic {current_epic}: {e}"
                 ) from e
 
-            # Find next story
+            # Find next story - use empty string fallback if current_story is None
+            current_story = current_state.current_story or ""
             next_story = _find_next_incomplete_story(
-                current_state.current_story,
+                current_story,
                 epic_stories,
                 current_state.completed_stories,
                 sprint_status,
@@ -371,16 +375,16 @@ def validate_resume_state(
                 # This is a consistency issue: stories all done but epic not marked done
                 logger.warning(
                     "All stories in epic %s are done but epic not marked done in sprint-status",
-                    current_state.current_epic,
+                    current_epic,
                 )
                 # Force epic completion check in next iteration
-                if current_state.current_epic not in current_state.completed_epics:
-                    epics_skipped.append(current_state.current_epic)
+                if current_epic not in current_state.completed_epics:
+                    epics_skipped.append(current_epic)
                     current_state = current_state.model_copy(
                         update={
                             "completed_epics": [
                                 *current_state.completed_epics,
-                                current_state.current_epic,
+                                current_epic,
                             ],
                             "updated_at": now,
                         }

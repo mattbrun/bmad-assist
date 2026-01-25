@@ -2,6 +2,17 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.9] - 2026-01-25
+
+### Changed
+- **refactor(config):** Split `config.py` into modular `core/config/` package
+- **refactor(providers):** Extract shared helpers, add cross-platform `platform_command.py` (thanks [@mattbrun](https://github.com/mattbrun))
+- **refactor(loop):** Split `runner.py` into 5 helper modules
+- **refactor(antipatterns):** Replace LLM extraction with deterministic regex
+
+### Fixed
+- Full mypy/ruff compliance across 102 files
+
 ## [0.4.8] - 2026-01-25
 
 ### Added
@@ -18,7 +29,9 @@ All notable changes to bmad-assist are documented in this file.
 
 ### Added
 - **Cursor Agent provider** for Multi-LLM orchestration (subprocess-based)
+  (thanks [@mattbrun](https://github.com/mattbrun))
 - **GitHub Copilot provider** for Multi-LLM orchestration (subprocess-based)
+  (thanks [@mattbrun](https://github.com/mattbrun))
 
 ## [0.4.6] - 2026-01-23
 

@@ -231,11 +231,8 @@ def generate_story_key(epic_id: EpicId, story: EpicStory) -> str | None:
     # Extract story number from "X.Y" format
     # EpicStory.number is "12.3" or "T.1"
     parts = story.number.split(".")
-    if len(parts) >= 2:
-        story_num = parts[-1]  # Take last segment: "3" for "12.3", "1" for "T.1"
-    else:
-        # Fallback for single number format
-        story_num = story.number
+    # Take last segment: "3" for "12.3", "1" for "T.1", or fallback to full number
+    story_num = parts[-1] if len(parts) >= 2 else story.number
 
     # Validate extracted story_num is not empty
     if not story_num or not story_num.strip():
@@ -328,6 +325,7 @@ def _parse_multi_epic_file(path: Path) -> list[EpicDocument]:
         title = match.group(2).strip()
 
         # Try to convert epic_num to int
+        epic_num: int | str
         try:
             epic_num = int(raw_num)
         except ValueError:

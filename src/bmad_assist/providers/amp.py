@@ -12,7 +12,8 @@ File Access:
 JSON Streaming:
     Uses -x --stream-json flags to capture JSONL event stream in execute mode.
     Event types: system, user, assistant, result
-    Text extracted from assistant events: {"message": {"content": [{"type": "text", "text": "..."}]}}
+    Text extracted from assistant events:
+        {"message": {"content": [{"type": "text", "text": "..."}]}}
     Or from result events: {"result": "final text"}
 
 Example:
@@ -334,9 +335,9 @@ class AmpProvider(BaseProvider):
                 "2. Use `Glob` to find files by pattern - NEVER use Bash for ls/find commands\n"
                 "3. Use `Grep` to search code content - NEVER use Bash for grep/rg/ag commands\n"
                 "4. You CANNOT modify any files - this is a READ-ONLY code review\n"
-                "5. If you need to see a file, use Read. If you need to find files, use Glob. If you need to search, use Grep.\n"
+                "5. Need a file? Use Read. Find files? Use Glob. Search? Use Grep.\n"
                 "6. Using Bash will FAIL - these tools are disabled for reviewers.\n\n"
-                "Your task: Produce a CODE REVIEW REPORT analyzing the implementation. No file modifications allowed.\n"
+                "Your task: Produce a CODE REVIEW REPORT. No file modifications allowed.\n"
             )
             final_prompt = prompt + restriction_warning
             logger.debug("Added prompt-level tool restriction warning for Amp CLI")
@@ -465,7 +466,7 @@ class AmpProvider(BaseProvider):
                                             normalized_tool_name: str = _AMP_TOOL_NAME_MAP.get(
                                                 tool_name, tool_name
                                             )
-                                            # Log warning if restricted tools are attempted (once per tool)
+                                            # Warn on restricted tool use (once per tool)
                                             if (
                                                 restricted_tools
                                                 and normalized_tool_name in restricted_tools
@@ -473,13 +474,10 @@ class AmpProvider(BaseProvider):
                                             ):
                                                 warned_tools.add(normalized_tool_name)
                                                 logger.warning(
-                                                    "Amp CLI: Attempted to use restricted tool '%s' "
-                                                    "(normalized='%s', allowed=%s, restricted=%s). "
-                                                    "Tool may still execute - this is a prompt-level warning only.",
+                                                    "Amp CLI: Restricted tool '%s' "
+                                                    "(norm='%s'). May still execute.",
                                                     tool_name,
                                                     normalized_tool_name,
-                                                    allowed_tools,
-                                                    restricted_tools,
                                                 )
                                             if print_progress:
                                                 tool_input = item.get("input", {})
@@ -559,7 +557,7 @@ class AmpProvider(BaseProvider):
                     returncode = process.wait(timeout=effective_timeout)
                 except TimeoutExpired:
                     process.kill()
-                    # Join threads with timeout - they should terminate quickly after process is killed
+                    # Join threads with timeout - should terminate quickly after kill
                     stdout_thread.join(timeout=2)
                     stderr_thread.join(timeout=2)
                     if stdout_thread.is_alive() or stderr_thread.is_alive():

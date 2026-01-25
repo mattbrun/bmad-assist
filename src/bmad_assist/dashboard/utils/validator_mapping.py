@@ -10,7 +10,7 @@ import json
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _load_mapping_file(path: Path) -> dict[str, Any] | None:
     """
     try:
         with open(path) as f:
-            return json.load(f)
+            return cast("dict[str, Any]", json.load(f))
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to load mapping file %s: %s", path, e)
         return None

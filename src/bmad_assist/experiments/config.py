@@ -33,7 +33,7 @@ from bmad_assist.core.exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
 
-# Valid name pattern: starts with letter or underscore, contains only alphanumeric, hyphens, underscores
+# Valid name pattern: starts with letter or underscore, contains only alphanumeric, hyphens, underscores # noqa: E501
 NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]*$")
 
 # Variable pattern for resolution: ${var_name}
@@ -445,7 +445,7 @@ class ConfigRegistry:
 
         return self._load_template(name)
 
-    @lru_cache(maxsize=32)
+    @lru_cache(maxsize=32)  # noqa: B019
     def _load_template(self, name: str) -> ConfigTemplate:
         """Load a template with caching.
 

@@ -81,7 +81,7 @@ class RepairSummary:
         ...     divergence_pct=45.0,
         ... )
         >>> summary.format_summary()
-        '15 stories to update, 3 epics to update, 5 new entries, 2 removed/deferred (45.0% divergence)'
+        '15 stories to update, 3 epics to update, 5 new, 2 removed (45.0% divergence)'
 
     """
 
@@ -212,9 +212,7 @@ def _is_interactive_terminal() -> bool:
         "TF_BUILD",  # Azure Pipelines
         "CODEBUILD_BUILD_ID",  # AWS CodeBuild
     ]
-    if any(os.environ.get(key) for key in ci_indicators):
-        return False
-    return True
+    return not any(os.environ.get(key) for key in ci_indicators)
 
 
 def _flush_stdin() -> None:

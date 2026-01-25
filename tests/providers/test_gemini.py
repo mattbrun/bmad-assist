@@ -1061,14 +1061,14 @@ class TestGeminiProviderToolRestrictions:
             # Verify warning was logged for restricted tool
             assert result.exit_code == 0
             warning_logs = [
-                record for record in caplog.records if "restricted tool" in record.message.lower()
+                record
+                for record in caplog.records
+                if "restricted tool" in record.getMessage().lower()
             ]
             assert len(warning_logs) > 0
             # Warning should mention both the real tool name and normalized name
-            assert (
-                "edit_file" in warning_logs[0].message.lower()
-                or "edit" in warning_logs[0].message.lower()
-            )
+            msg = warning_logs[0].getMessage().lower()
+            assert "edit_file" in msg or "edit" in msg
 
     def test_master_mode_no_restrictions_allows_all_tools(self, provider: GeminiProvider) -> None:
         """Test AC1: Master mode (no allowed_tools) allows all tools."""

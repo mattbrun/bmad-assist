@@ -150,7 +150,7 @@ class ExtractionContext:
     """
 
     story_epic: EpicId
-    story_num: int
+    story_num: int | str
     timestamp: datetime
     project_root: Path
     max_retries: int = 3
@@ -519,12 +519,13 @@ async def extract_metrics_async(
                 retry_prompt = f"{prompt}\n\n<error>{retry_hint}</error>"
 
             # Invoke LLM with allowed_tools=[] to prevent file modification
+            settings_path = Path(context.settings_file) if context.settings_file else None
             result = await asyncio.to_thread(
                 provider.invoke,
                 retry_prompt,
                 model=context.model,
                 timeout=context.timeout_seconds,
-                settings_file=context.settings_file,
+                settings_file=settings_path,
                 allowed_tools=[],  # Extraction is read-only
             )
 

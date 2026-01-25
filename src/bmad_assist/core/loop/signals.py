@@ -5,6 +5,7 @@ Updated: Hard kill on Ctrl+C - no graceful shutdown, immediate exit.
 
 """
 
+import contextlib
 import os
 import signal
 import threading
@@ -144,12 +145,9 @@ def _handle_sigint(signum: int, frame: FrameType | None) -> None:
     """
     # Get our PID and kill entire process group
     pid = os.getpid()
-    try:
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         # Kill all child processes in our process group
         os.killpg(os.getpgid(pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
-        # If process group kill fails, just kill ourselves
-        pass
     # Hard exit - no cleanup, no atexit handlers
     os._exit(130)  # 128 + SIGINT(2) = 130
 
@@ -165,10 +163,8 @@ def _handle_sigterm(signum: int, frame: FrameType | None) -> None:
 
     """
     pid = os.getpid()
-    try:
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         os.killpg(os.getpgid(pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError, OSError):
-        pass
     os._exit(143)  # 128 + SIGTERM(15) = 143
 
 

@@ -43,10 +43,18 @@ Example:
 
 from .amp import AmpProvider
 from .base import (
+    MAX_RETRIES,
+    RETRY_BASE_DELAY,
+    RETRY_MAX_DELAY,
+    TRANSIENT_ERROR_PATTERNS,
     BaseProvider,
     ExitStatus,
     ProviderResult,
+    calculate_retry_delay,
+    is_transient_error,
+    read_stream_lines,
     resolve_settings_file,
+    start_stream_reader_threads,
     validate_settings_file,
 )
 from .claude import ClaudeSubprocessProvider
@@ -92,4 +100,13 @@ __all__ = [
     # Settings helpers
     "resolve_settings_file",
     "validate_settings_file",
+    # Retry/stream helpers (shared by copilot.py, cursor_agent.py)
+    "MAX_RETRIES",
+    "RETRY_BASE_DELAY",
+    "RETRY_MAX_DELAY",
+    "TRANSIENT_ERROR_PATTERNS",
+    "calculate_retry_delay",
+    "is_transient_error",
+    "read_stream_lines",
+    "start_stream_reader_threads",
 ]

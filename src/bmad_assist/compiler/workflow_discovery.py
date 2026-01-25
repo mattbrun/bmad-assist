@@ -2,7 +2,8 @@
 
 Hybrid discovery strategy:
 - CUSTOM workflows (validate-story, *-synthesis, code-review): Always use bundled
-- STANDARD workflows (create-story, dev-story, retrospective): Prefer user's BMAD, fallback to bundled
+- STANDARD workflows (create-story, dev-story, retrospective): Prefer user's BMAD,
+  fallback to bundled
 """
 
 import logging
@@ -68,6 +69,7 @@ def discover_workflow_dir(
 
     Returns:
         Path to workflow directory, or None if not found.
+
     """
     # Always check project-level override first (for any workflow)
     override = project_root / ".bmad-assist/workflows" / workflow_name

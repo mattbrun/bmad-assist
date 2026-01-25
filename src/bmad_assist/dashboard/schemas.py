@@ -275,6 +275,7 @@ class ValidatorProgressEvent(DashboardEvent):
                 "duration_ms": 45000
             }
         }
+
     """
 
     type: Literal["validator_progress"] = "validator_progress"
@@ -324,6 +325,7 @@ class PhaseCompleteEvent(DashboardEvent):
                 "failed_count": 0
             }
         }
+
     """
 
     type: Literal["phase_complete"] = "phase_complete"

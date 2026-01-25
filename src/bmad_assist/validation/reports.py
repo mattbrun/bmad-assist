@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import frontmatter  # type: ignore[import-untyped]
+import frontmatter
 import yaml
 
 from bmad_assist.core.extraction import (

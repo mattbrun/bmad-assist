@@ -9,11 +9,14 @@ This package provides utilities for config route handlers:
 import asyncio
 from typing import Any
 
-# Shared state (singleton per process - Python caches module imports)
-_config_editor_lock = asyncio.Lock()
-_full_schema_cache: dict[str, Any] | None = None
-
 # Re-export all utilities for backward compatibility
+from .diff import _calculate_diff, _find_risky_fields_in_diff
+from .provenance import (
+    _add_provenance_to_raw,
+    _create_config_editor,
+    _strip_provenance,
+    _validate_path_exists,
+)
 from .security import (
     _build_full_schema,
     _check_risky_fields,
@@ -25,13 +28,10 @@ from .security import (
     _get_field_security,
     _get_full_schema,
 )
-from .provenance import (
-    _add_provenance_to_raw,
-    _create_config_editor,
-    _strip_provenance,
-    _validate_path_exists,
-)
-from .diff import _calculate_diff, _find_risky_fields_in_diff
+
+# Shared state (singleton per process - Python caches module imports)
+_config_editor_lock = asyncio.Lock()
+_full_schema_cache: dict[str, Any] | None = None
 
 # Maximum import content size (100KB) - used by import_export.py
 IMPORT_MAX_SIZE = 100 * 1024

@@ -99,7 +99,7 @@ def init_handlers(config: "Config", project_path: Path) -> None:
         except ValueError:
             raise ConfigError(
                 f"Invalid phase '{phase_name}' in loop config - not a valid Phase enum value"
-            )
+            ) from None
 
         if phase not in _handler_instances:
             raise ConfigError(

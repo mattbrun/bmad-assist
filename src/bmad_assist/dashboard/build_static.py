@@ -129,26 +129,27 @@ def watch() -> None:
         print("Install watchdog for watch mode: pip install watchdog")
         sys.exit(1)
 
-    class RebuildHandler(FileSystemEventHandler):
-        def _should_rebuild(self, event) -> bool:
+    class RebuildHandler(FileSystemEventHandler):  # type: ignore[misc]
+        def _should_rebuild(self, event: object) -> bool:
             """Check if event should trigger rebuild."""
-            if event.is_directory:
+            if getattr(event, "is_directory", False):
                 return False
-            return event.src_path.endswith((".html", ".js"))
+            src_path = getattr(event, "src_path", "")
+            return str(src_path).endswith((".html", ".js"))
 
-        def on_modified(self, event):
+        def on_modified(self, event: object) -> None:
             if self._should_rebuild(event):
-                print(f"Changed: {event.src_path}")
+                print(f"Changed: {getattr(event, 'src_path', '')}")
                 build()
 
-        def on_created(self, event):
+        def on_created(self, event: object) -> None:
             if self._should_rebuild(event):
-                print(f"Created: {event.src_path}")
+                print(f"Created: {getattr(event, 'src_path', '')}")
                 build()
 
-        def on_deleted(self, event):
+        def on_deleted(self, event: object) -> None:
             if self._should_rebuild(event):
-                print(f"Deleted: {event.src_path}")
+                print(f"Deleted: {getattr(event, 'src_path', '')}")
                 build()
 
     observer = Observer()

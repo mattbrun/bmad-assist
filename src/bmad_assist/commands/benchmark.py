@@ -10,14 +10,14 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-logger = logging.getLogger(__name__)
-
 from bmad_assist.cli_utils import (
     EXIT_ERROR,
     _error,
     _get_benchmarks_dir,
     _validate_project_path,
 )
+
+logger = logging.getLogger(__name__)
 
 benchmark_app = typer.Typer(
     name="benchmark",

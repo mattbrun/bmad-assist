@@ -17,7 +17,6 @@ import asyncio
 import logging
 from typing import Any
 
-from bmad_assist.core.config import get_phase_timeout
 from bmad_assist.core.loop.handlers.base import BaseHandler
 from bmad_assist.core.loop.types import PhaseResult
 
@@ -78,8 +77,6 @@ class ValidateStoryHandler(BaseHandler):
             PhaseResult with validation metadata for synthesis phase.
 
         """
-        from bmad_assist.core.loop.interactive import get_debugger
-
         try:
             # Extract story info
             epic_num = state.current_epic
@@ -120,7 +117,10 @@ class ValidateStoryHandler(BaseHandler):
 
             # Save evaluation records for benchmarking (Story 13.4)
             if result.evaluation_records:
-                from bmad_assist.benchmarking.storage import get_benchmark_base_dir, save_evaluation_record
+                from bmad_assist.benchmarking.storage import (
+                    get_benchmark_base_dir,
+                    save_evaluation_record,
+                )
 
                 # CRITICAL: Use centralized path utility, not get_paths() singleton!
                 # get_paths() is initialized for CLI working directory, but records
@@ -151,23 +151,6 @@ class ValidateStoryHandler(BaseHandler):
             outputs["anonymized_count"] = len(result.anonymized_validations)
 
             phase_result = PhaseResult.ok(outputs)
-
-            # Interactive debug mode check
-            debugger = get_debugger()
-            if debugger.is_enabled:
-                result_summary = (
-                    f"VALIDATION COMPLETE - {result.validation_count} validators, "
-                    f"session: {result.session_id[:8]}..."
-                )
-                continue_execution = debugger.run_debug_loop(
-                    phase_name=self.phase_name,
-                    result_summary=result_summary,
-                    provider=self.get_provider(),
-                    model=self.get_model(),
-                    timeout=get_phase_timeout(self.config, self.phase_name),
-                )
-                if not continue_execution:
-                    return PhaseResult.fail("User interrupted execution")
 
             return phase_result
 

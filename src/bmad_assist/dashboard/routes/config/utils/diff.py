@@ -56,11 +56,11 @@ def _find_risky_fields_in_diff(diff: dict[str, Any], schema: dict[str, Any]) -> 
     """
     risky = []
 
-    for path in diff.get("added", {}).keys():
+    for path in diff.get("added", {}):
         if _get_field_security(path, schema) == "risky":
             risky.append(path)
 
-    for path in diff.get("modified", {}).keys():
+    for path in diff.get("modified", {}):
         if _get_field_security(path, schema) == "risky":
             risky.append(path)
 

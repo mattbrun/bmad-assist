@@ -24,7 +24,6 @@ from typing import Any
 
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
-from bmad_assist.core.config import get_phase_timeout
 from bmad_assist.core.exceptions import ConfigError
 from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop.handlers.base import BaseHandler, check_for_edit_failures
@@ -211,7 +210,6 @@ class ValidateStorySynthesisHandler(BaseHandler):
 
         """
         from bmad_assist.core.io import save_prompt
-        from bmad_assist.core.loop.interactive import get_debugger
 
         try:
             # Get story info for report saving
@@ -233,7 +231,7 @@ class ValidateStorySynthesisHandler(BaseHandler):
 
             # Story 22.8 AC#4: Unpack tuple with failed_validators
             # TIER 2: Also loads pre-calculated evidence_score for synthesis context
-            anonymized_validations, failed_validators, evidence_score_data = load_validations_for_synthesis(
+            anonymized_validations, failed_validators, evidence_score_data = load_validations_for_synthesis( # noqa: E501
                 session_id,
                 self.project_path,
             )
@@ -342,23 +340,6 @@ class ValidateStorySynthesisHandler(BaseHandler):
                         "duration_ms": result.duration_ms,
                     }
                 )
-
-            # Interactive debug mode
-            debugger = get_debugger()
-            if debugger.is_enabled:
-                result_summary = (
-                    f"{'SUCCESS' if phase_result.success else 'FAILED'} - "
-                    f"{len(result.stdout)} chars output"
-                )
-                continue_execution = debugger.run_debug_loop(
-                    phase_name=self.phase_name,
-                    result_summary=result_summary,
-                    provider=self.get_provider(),
-                    model=self.get_model(),
-                    timeout=get_phase_timeout(self.config, self.phase_name),
-                )
-                if not continue_execution:
-                    return PhaseResult.fail("User interrupted execution")
 
             return phase_result
 

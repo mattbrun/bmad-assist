@@ -28,7 +28,6 @@ from bmad_assist.code_review.orchestrator import (
 )
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
-from bmad_assist.core.config import get_phase_timeout
 from bmad_assist.core.exceptions import ConfigError
 from bmad_assist.core.io import get_original_cwd
 from bmad_assist.core.loop.handlers.base import BaseHandler, check_for_edit_failures
@@ -167,7 +166,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
                 "story_num": story_num,
                 "session_id": session_id,
                 "anonymized_reviews": anonymized_reviews,
-                "failed_reviewers": failed_reviewers,  # AC #4: Include failed reviewers for LLM context
+                "failed_reviewers": failed_reviewers,  # AC #4: Include failed reviewers for LLM context # noqa: E501
             },
         )
 
@@ -198,7 +197,6 @@ class CodeReviewSynthesisHandler(BaseHandler):
 
         """
         from bmad_assist.core.io import save_prompt
-        from bmad_assist.core.loop.interactive import get_debugger
 
         try:
             # Get story info for report saving
@@ -221,7 +219,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
             try:
                 # Story 22.7: load_reviews_for_synthesis now returns (reviews, failed_reviewers)
                 # TIER 2: Also loads pre-calculated evidence_score for synthesis context
-                anonymized_reviews, failed_reviewers, evidence_score_data = load_reviews_for_synthesis(
+                anonymized_reviews, failed_reviewers, evidence_score_data = load_reviews_for_synthesis( # noqa: E501
                     session_id,
                     self.project_path,
                 )
@@ -334,23 +332,6 @@ class CodeReviewSynthesisHandler(BaseHandler):
                     }
                 )
 
-            # Interactive debug mode
-            debugger = get_debugger()
-            if debugger.is_enabled:
-                result_summary = (
-                    f"{'SUCCESS' if phase_result.success else 'FAILED'} - "
-                    f"{len(result.stdout)} chars output"
-                )
-                continue_execution = debugger.run_debug_loop(
-                    phase_name=self.phase_name,
-                    result_summary=result_summary,
-                    provider=self.get_provider(),
-                    model=self.get_model(),
-                    timeout=get_phase_timeout(self.config, self.phase_name),
-                )
-                if not continue_execution:
-                    return PhaseResult.fail("User interrupted execution")
-
             return phase_result
 
         except ConfigError as e:
@@ -430,7 +411,7 @@ class CodeReviewSynthesisHandler(BaseHandler):
         self,
         synthesis_output: str,
         epic_num: EpicId,
-        story_num: int,
+        story_num: int | str,
         story_title: str,
         start_time: datetime,
         end_time: datetime,

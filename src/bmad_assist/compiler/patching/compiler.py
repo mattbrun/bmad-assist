@@ -452,7 +452,7 @@ def load_workflow_ir(
         try:
             cached_content = cache_path.read_text(encoding="utf-8")
         except OSError as e:
-            raise CompilerError(f"Failed to load cached template: {cache_path}\n  Error: {e}") from e
+            raise CompilerError(f"Failed to load cached template: {cache_path}\n  Error: {e}") from e # noqa: E501
 
         # Parse cached template into WorkflowIR
         # NOTE: Use ^tag to match tags at line start, not as text in comments
