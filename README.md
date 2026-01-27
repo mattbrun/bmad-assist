@@ -4,7 +4,7 @@ CLI tool for automating the [BMAD](https://github.com/bmad-code-org/BMAD-METHOD)
 
 ## What is BMAD?
 
-BMAD (Brian's Methodology for AI-Driven Development) is a structured approach to software development that leverages AI assistants throughout the entire lifecycle.
+BMAD (Breakthrough Method of Agile AI Driven Development) is a structured approach to software development that leverages AI assistants throughout the entire lifecycle.
 
 **bmad-assist** automates the BMAD loop with Multi-LLM orchestration:
 
