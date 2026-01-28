@@ -121,19 +121,17 @@ class TestDiscoverPatch:
 
         assert result == patch_file
 
-    def test_logs_critical_when_no_patch(
+    def test_logs_debug_when_no_patch(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that CRITICAL is logged when no patch found."""
+        """Test that DEBUG is logged when no patch found (not an error for custom workflows)."""
         with patch("pathlib.Path.home", return_value=tmp_path / "global"):
-            with caplog.at_level(logging.CRITICAL):
+            with caplog.at_level(logging.DEBUG):
                 # Use a workflow that doesn't exist in default_patches
                 result = discover_patch("nonexistent-workflow", tmp_path)
 
         assert result is None
-        assert "NO PATCH FOUND FOR 'nonexistent-workflow'" in caplog.text
-        assert "minimal BMAD stubs" in caplog.text
-        assert "Searched paths:" in caplog.text
+        assert "No patch found for 'nonexistent-workflow'" in caplog.text
 
     def test_package_fallback_finds_default_patches(self, tmp_path: Path) -> None:
         """Test that patches are found in package default_patches directory."""

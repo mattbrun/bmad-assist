@@ -169,21 +169,10 @@ def discover_patch(
         logger.debug("Found patch at package path: %s", package_patch)
         return package_patch
 
-    # No patch found - this is a critical issue as original workflows are minimal stubs
-    searched_paths = [
-        f"  - {project_root / DEFAULT_PATCH_DIR / patch_filename}",
-        f"  - {Path.home() / DEFAULT_PATCH_DIR / patch_filename}",
-        f"  - {package_patch}",
-    ]
-    if cwd is not None and cwd.resolve() != project_root.resolve():
-        searched_paths.insert(1, f"  - {cwd / DEFAULT_PATCH_DIR / patch_filename}")
-
-    logger.critical(
-        "NO PATCH FOUND FOR '%s' - workflow will use minimal BMAD stubs!\n"
-        "Searched paths:\n%s\n"
-        "To fix: copy patches to your project's .bmad-assist/patches/ or ~/.bmad-assist/patches/",
+    # No patch found - this is OK for custom workflows that don't need patches
+    logger.debug(
+        "No patch found for '%s' - using workflow as-is (searched: project, global, package paths)",
         workflow_name,
-        "\n".join(searched_paths),
     )
     return None
 

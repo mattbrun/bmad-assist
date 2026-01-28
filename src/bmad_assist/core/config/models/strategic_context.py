@@ -156,7 +156,18 @@ class StrategicContextConfig(BaseModel):
         default_factory=_validate_story_synthesis_defaults,
         description="Overrides for validate_story_synthesis (project-context only)",
     )
-    # dev_story, code_review, code_review_synthesis use defaults (project-context only)
+    dev_story: StrategicContextWorkflowConfig = Field(
+        default_factory=StrategicContextWorkflowConfig,
+        description="Overrides for dev_story (defaults to project-context only)",
+    )
+    code_review: StrategicContextWorkflowConfig = Field(
+        default_factory=StrategicContextWorkflowConfig,
+        description="Overrides for code_review (defaults to project-context only)",
+    )
+    code_review_synthesis: StrategicContextWorkflowConfig = Field(
+        default_factory=StrategicContextWorkflowConfig,
+        description="Overrides for code_review_synthesis (defaults to project-context only)",
+    )
 
     def get_workflow_config(self, workflow_name: str) -> tuple[tuple[StrategicDocType, ...], bool]:
         """Get merged config for a workflow.
