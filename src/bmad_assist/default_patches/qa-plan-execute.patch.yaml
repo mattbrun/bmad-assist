@@ -1,0 +1,125 @@
+patch:
+  name: "qa-plan-execute-optimizer"
+  version: "1.0.0"
+  author: "BMad"
+  description: "Strip interactivity for automated/CI execution"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "qa-plan-execute"
+
+# Conditions for patch application
+conditions:
+  - variable: non_interactive
+    equals: true
+
+transforms:
+  # Remove interactive prompts
+  - "Remove all <ask> blocks when non_interactive=true"
+  - "Remove all <confirm> blocks"
+  - "Replace user confirmation checks with auto-continue"
+  - "Set auto_continue_on_fail=true in workflow context"
+
+# Post-process rules - strip interactivity for headless mode
+post_process:
+  # Remove <ask> blocks completely
+  - pattern: '\s*<ask>.*?</ask>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove <ask if="...">...</ask> blocks
+  - pattern: '\s*<ask if="[^"]*">.*?</ask>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove <confirm> blocks completely
+  - pattern: '\s*<confirm>.*?</confirm>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove "Your choice" prompts
+  - pattern: '\s*Your choice.*?:'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Replace failure handling checks with auto-continue
+  - pattern: '<check if="test failed AND NOT fail_fast AND NOT non_interactive">'
+    replacement: '<check if="false">'
+    flags: ""
+
+  # Replace user confirmation conditionals
+  - pattern: '<check if="user confirms">'
+    replacement: '<check if="auto_approve == true">'
+    flags: ""
+
+  # Replace setup failure interactive handling
+  - pattern: '<check if="setup failed">.*?</check>'
+    replacement: |
+      <check if="setup failed">
+        <output>
+        **Setup Failed** - Proceeding with tests anyway (non-interactive mode)
+        </output>
+      </check>
+    flags: "DOTALL"
+
+  # Replace [Y/n] type prompts with auto-proceed
+  - pattern: 'Proceed\? \[Y/n\]'
+    replacement: "(auto-approved in non-interactive mode)"
+    flags: ""
+
+  - pattern: '\[y/N\]'
+    replacement: "(auto-default in non-interactive mode)"
+    flags: "IGNORECASE"
+
+  # Inject auto-mode critical instruction at start
+  - pattern: '(## Step 1: Initialize)'
+    replacement: |
+      <critical>
+      NON-INTERACTIVE MODE: This workflow is running headlessly.
+      - All user prompts are skipped
+      - Default values used for all options
+      - Auto-continue on test failures
+      - Complete run generates report regardless of failures
+      </critical>
+
+      \1
+    flags: "DOTALL"
+
+  # Remove the Step 1.3, 1.4, 1.5 interactive sections completely
+  - pattern: '### 1\.3 Category Selection.*?---'
+    replacement: |
+      ### 1.3 Category Selection (Non-Interactive)
+      <action>Using category from config: {category}</action>
+
+      ---
+    flags: "DOTALL"
+
+  # Remove interactive failure handling loop
+  - pattern: 'What would you like to do\?.*?Your choice \[1\]:'
+    replacement: "(auto-continuing in non-interactive mode)"
+    flags: "DOTALL"
+
+# Variables to set when patch is applied
+set_variables:
+  non_interactive: true
+  auto_approve: true
+  auto_continue_on_fail: true
+  skip_confirmations: true
+
+# Embed content for compiled prompt (optional)
+embed_content:
+  # Test plan content will be embedded by compiler
+  - source: "{qa_artifacts}/test-plans/epic-{epic_num}-e2e-plan.md"
+    target: "{{TEST_PLAN_CONTENT}}"
+    required: true
+
+validation:
+  must_contain:
+    - "## Step 1"
+    - "## Step 4: Execute Category A"
+    - "## Step 6: Generate Results"
+  must_not_contain_when_compiled:
+    - "<ask>"
+    - "<confirm>"
+    - "Your choice"
+    - "Proceed? [Y/n]"

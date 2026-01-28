@@ -332,7 +332,7 @@ def _parse_multi_epic_file(path: Path) -> list[EpicDocument]:
             epic_num = raw_num
 
         # Parse stories from epic content
-        stories = _parse_story_sections(epic_content)
+        stories = _parse_story_sections(epic_content, epic_num, str(path))
 
         epics.append(
             EpicDocument(

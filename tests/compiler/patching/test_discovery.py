@@ -101,7 +101,8 @@ class TestDiscoverPatch:
     def test_no_patch_returns_none(self, tmp_path: Path) -> None:
         """Test that missing patch returns None."""
         with patch("pathlib.Path.home", return_value=tmp_path / "global"):
-            result = discover_patch("create-story", tmp_path)
+            # Use a workflow that doesn't exist in default_patches
+            result = discover_patch("nonexistent-workflow", tmp_path)
 
         assert result is None
 
@@ -120,16 +121,30 @@ class TestDiscoverPatch:
 
         assert result == patch_file
 
-    def test_logs_warning_when_no_patch(
+    def test_logs_critical_when_no_patch(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that warning is logged when no patch found."""
+        """Test that CRITICAL is logged when no patch found."""
         with patch("pathlib.Path.home", return_value=tmp_path / "global"):
-            with caplog.at_level(logging.WARNING):
-                result = discover_patch("create-story", tmp_path)
+            with caplog.at_level(logging.CRITICAL):
+                # Use a workflow that doesn't exist in default_patches
+                result = discover_patch("nonexistent-workflow", tmp_path)
 
         assert result is None
-        assert "No patch found for create-story" in caplog.text
+        assert "NO PATCH FOUND FOR 'nonexistent-workflow'" in caplog.text
+        assert "minimal BMAD stubs" in caplog.text
+        assert "Searched paths:" in caplog.text
+
+    def test_package_fallback_finds_default_patches(self, tmp_path: Path) -> None:
+        """Test that patches are found in package default_patches directory."""
+        # When no project/global patches exist, should find package default
+        with patch("pathlib.Path.home", return_value=tmp_path / "global"):
+            result = discover_patch("create-story", tmp_path)
+
+        # Should find the default patch from package
+        assert result is not None
+        assert "default_patches" in str(result)
+        assert result.name == "create-story.patch.yaml"
 
 
 class TestLoadPatch:

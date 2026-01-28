@@ -4,8 +4,64 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bmad_assist.compiler.strategic_context import load_antipatterns
+from bmad_assist.compiler.strategic_context import (
+    TRUNCATION_NOTICE,
+    _truncate_content,
+    load_antipatterns,
+)
 from bmad_assist.compiler.types import CompilerContext
+
+
+class TestTruncateContent:
+    """Tests for _truncate_content() helper function."""
+
+    def test_short_content_not_truncated(self):
+        """Content shorter than budget is returned unchanged."""
+        content = "Short content"
+        result, tokens = _truncate_content(content, 1000)
+        assert result == content
+        assert TRUNCATION_NOTICE not in result
+
+    def test_truncation_adds_notice(self):
+        """Truncated content includes truncation notice."""
+        # Create content that exceeds budget (1000 tokens = ~4000 chars)
+        content = "## Section 1\n\nParagraph 1.\n\n" * 200  # ~6000 chars
+        result, tokens = _truncate_content(content, 500)
+        assert TRUNCATION_NOTICE in result
+        assert len(result) < len(content)
+
+    def test_truncation_at_markdown_header(self):
+        """Truncation prefers markdown header boundaries."""
+        # Create longer content (~2000 chars = 500 tokens)
+        section = "## Section {n}\n\n" + "Content for section with more text. " * 10 + "\n\n"
+        content = "".join(section.format(n=i) for i in range(1, 6))
+
+        # Budget for ~40% of content (200 tokens)
+        result, _ = _truncate_content(content, 200)
+        assert TRUNCATION_NOTICE in result
+        # Should cut before a ## header, not mid-sentence
+        assert result.count("## Section") < content.count("## Section")
+
+    def test_truncation_at_blank_line(self):
+        """Truncation falls back to blank line boundaries."""
+        # Content without markdown headers, just paragraphs (~1600 chars = 400 tokens)
+        content = "\n\n".join(f"Paragraph {i} with some content here. " * 10 for i in range(1, 5))
+
+        # Budget for ~half (200 tokens)
+        result, _ = _truncate_content(content, 200)
+        assert TRUNCATION_NOTICE in result
+        # Should preserve complete paragraphs (end with content, not mid-word)
+        text_before_notice = result.replace(TRUNCATION_NOTICE, "").rstrip()
+        assert text_before_notice[-1] in ".!? \n"  # Ends cleanly
+
+    def test_budget_overrun_allowed(self):
+        """Slightly exceeding budget is allowed for better cut points."""
+        # Content with header at ~4400 chars (1100 tokens)
+        content = "A" * 4000 + "\n\n## Header\n\n" + "B" * 1000
+        # Budget 1000 tokens = 4000 chars, but header is at 4400
+        result, tokens = _truncate_content(content, 1000)
+        # Should include content slightly over budget to reach header
+        assert tokens <= 1100 * 1.2  # Allow 20% margin for truncation notice
 
 
 class TestLoadAntipatterns:

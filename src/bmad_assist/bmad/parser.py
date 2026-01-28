@@ -47,6 +47,9 @@ DEPENDENCIES_PATTERN = re.compile(
 # Pattern to extract story numbers from dependencies
 STORY_NUMBER_PATTERN = re.compile(r"(\d+\.\d+)")
 
+# Pattern for non-standard dependency codes like PRSP-5-1, REFACTOR-2-1
+NON_STANDARD_DEP_PATTERN = re.compile(r"([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)", re.IGNORECASE)
+
 # Patterns for checkbox criteria
 CHECKBOX_CHECKED_PATTERN = re.compile(r"-\s*\[x\]", re.IGNORECASE)
 CHECKBOX_UNCHECKED_PATTERN = re.compile(r"-\s*\[\s*\]")
@@ -97,6 +100,7 @@ class EpicStory:
     Attributes:
         number: Story number in format "X.Y" (e.g., "2.1").
         title: Story title.
+        code: Original story code for non-standard formats (e.g., "PRSP-5-1"), None for standard.
         estimate: Story point estimate, or None if not specified.
         status: Story status from explicit **Status:** field, or None.
         dependencies: List of dependent story numbers (e.g., ["3.2", "3.4"]).
@@ -107,6 +111,7 @@ class EpicStory:
 
     number: str
     title: str
+    code: str | None = None
     estimate: int | None = None
     status: str | None = None
     dependencies: list[str] = field(default_factory=list)
@@ -198,17 +203,20 @@ def _extract_status(section: str) -> str | None:
         section: The markdown content of a story section.
 
     Returns:
-        The status string, or None if no explicit status is found.
+        The status string (cleaned), or None if no explicit status is found.
 
     """
     match = STATUS_PATTERN.search(section)
     if match:
-        return match.group(1).strip()
+        # Clean up: strip whitespace and trailing asterisks (typos like "done**")
+        return match.group(1).strip().rstrip("*").strip()
     return None
 
 
 def _extract_dependencies(section: str) -> list[str]:
     """Extract dependency story numbers from a story section.
+
+    Supports both standard (X.Y) and non-standard (PRSP-5-1) formats.
 
     Args:
         section: The markdown content of a story section.
@@ -222,8 +230,15 @@ def _extract_dependencies(section: str) -> list[str]:
         return []
 
     deps_text = deps_match.group(1)
+
+    # Try standard format first (X.Y)
     numbers = STORY_NUMBER_PATTERN.findall(deps_text)
-    return numbers
+    if numbers:
+        return numbers
+
+    # Fallback: try non-standard format (PRSP-5-1, etc.)
+    codes = NON_STANDARD_DEP_PATTERN.findall(deps_text)
+    return codes
 
 
 def _count_criteria(section: str) -> tuple[int | None, int | None]:
@@ -261,13 +276,133 @@ def _is_multi_epic_file(content: str) -> bool:
     return len(matches) > 1
 
 
-def _parse_story_sections(content: str) -> list[EpicStory]:
+def _find_stories_section(content: str) -> tuple[str, int] | None:
+    """Find Stories section and return (section_content, marker_level).
+
+    Returns None if no Stories section found.
+    """
+    # Pattern: ## Stories, ### Stories by Phase, etc.
+    marker = re.search(r"^(#{2,})\s+.*Stories.*$", content, re.MULTILINE | re.IGNORECASE)
+    if not marker:
+        return None
+
+    marker_level = len(marker.group(1))
+    section_start = marker.end()
+
+    # Find end: next header at EXACTLY same level (not more #'s)
+    # Build regex: exactly N hashes followed by space (not another #)
+    # Use string concat to avoid f-string escaping issues with {N}
+    end_pattern = r"^" + "#" * marker_level + r"(?!#)\s"
+    end_match = re.search(end_pattern, content[section_start:], re.MULTILINE)
+    section_end = section_start + end_match.start() if end_match else len(content)
+
+    return content[section_start:section_end], marker_level
+
+
+def _parse_fallback_story_sections(
+    content: str,
+    epic_num: EpicId,
+    path: str,
+) -> list[EpicStory]:
+    """Fallback parser using Status-anchored detection.
+
+    Finds stories by locating **Status:** fields and mapping them
+    to their nearest preceding header. Numbers sequentially.
+    """
+    result = _find_stories_section(content)
+    if result is None:
+        return []
+
+    section, _ = result
+
+    # Find all headers in section
+    headers = list(re.finditer(r"^(#{2,})\s+(.+)$", section, re.MULTILINE))
+    if not headers:
+        # No headers but check if Status exists - that's malformed
+        if re.search(r"\*\*Status:\*\*", section, re.IGNORECASE):
+            raise ParserError(
+                f"Malformed epic file {path}: Found **Status:** field(s) but no valid "
+                "story headers. Status must appear AFTER a header, not before."
+            )
+        return []
+
+    stories = []
+    for i, header in enumerate(headers):
+        # Get this header's "area" (until next header or end)
+        area_start = header.end()
+        area_end = headers[i + 1].start() if i + 1 < len(headers) else len(section)
+        area = section[area_start:area_end]
+
+        # Check if this area has **Status:** - the story anchor
+        status = _extract_status(area)
+        if status is None:
+            continue  # Not a story, skip (e.g., phase header)
+
+        # Parse header: "CODE: Title" or just "Title"
+        header_text = header.group(2).strip()
+        if not header_text:
+            logger.warning("Empty header in %s, skipping", path)
+            continue
+
+        if ":" in header_text:
+            parts = header_text.split(":", 1)
+            code = parts[0].strip()
+            title = parts[1].strip() if len(parts) > 1 and parts[1].strip() else header_text
+        else:
+            code = None
+            title = header_text
+
+        # Validate non-empty title
+        if not title:
+            logger.warning(
+                "Empty title after parsing header '%s' in %s, skipping", header_text, path
+            )
+            continue
+
+        # Extract other fields, cache criteria count
+        criteria = _count_criteria(area)
+
+        stories.append(
+            EpicStory(
+                number=f"{epic_num}.{len(stories) + 1}",
+                title=title,
+                code=code,
+                status=status,
+                estimate=_extract_estimate(area),
+                dependencies=_extract_dependencies(area),
+                completed_criteria=criteria[0],
+                total_criteria=criteria[1],
+            )
+        )
+
+    if stories:
+        # Log fallback usage (INFO level - working as designed)
+        first_id = stories[0].code or stories[0].title[:25]
+        logger.info(
+            "Non-standard story format in %s. Using fallback parser "
+            "(sequential numbering): %s -> %s, ... (%d stories total)",
+            path,
+            first_id,
+            stories[0].number,
+            len(stories),
+        )
+
+    return stories
+
+
+def _parse_story_sections(
+    content: str,
+    epic_num: EpicId | None = None,
+    path: str = "",
+) -> list[EpicStory]:
     """Extract stories from epic content.
 
-    Splits content by story headers and parses each section.
+    Tries standard pattern first, falls back to Status-anchored detection.
 
     Args:
         content: The markdown content of an epic file.
+        epic_num: Epic ID for fallback numbering (required for fallback).
+        path: File path for error/warning messages.
 
     Returns:
         List of EpicStory objects extracted from the content.
@@ -276,7 +411,24 @@ def _parse_story_sections(content: str) -> list[EpicStory]:
     matches = list(STORY_HEADER_PATTERN.finditer(content))
 
     if not matches:
+        # Fallback: try Status-anchored detection
+        if epic_num is not None:
+            return _parse_fallback_story_sections(content, epic_num, path)
         return []
+
+    # Detect mixed format - standard found but there might be more non-standard
+    stories_section = _find_stories_section(content)
+    if stories_section and epic_num is not None:
+        section_content, _ = stories_section
+        status_count = len(re.findall(r"\*\*Status:\*\*", section_content, re.IGNORECASE))
+        if status_count > len(matches):
+            logger.info(
+                "Mixed story format detected in %s: %d standard, %d total Status fields. "
+                "Only standard stories parsed. Consider using consistent format.",
+                path,
+                len(matches),
+                status_count,
+            )
 
     stories = []
     for i, match in enumerate(matches):
@@ -286,8 +438,8 @@ def _parse_story_sections(content: str) -> list[EpicStory]:
             end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
             section = content[start:end]
 
-            epic_num, story_num, title = match.groups()
-            number = f"{epic_num}.{story_num}"
+            epic_num_parsed, story_num, title = match.groups()
+            number = f"{epic_num_parsed}.{story_num}"
 
             # Extract details from section
             estimate = _extract_estimate(section)
@@ -371,7 +523,7 @@ def parse_epic_file(path: str | Path) -> EpicDocument:
                     title = header_match.group(2).strip()
 
     # Parse story sections from content
-    stories = _parse_story_sections(doc.content)
+    stories = _parse_story_sections(doc.content, epic_num, doc.path)
 
     return EpicDocument(
         epic_num=epic_num,

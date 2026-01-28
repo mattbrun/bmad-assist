@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from bmad_assist.bmad import BmadDocument, parse_bmad_file
+from bmad_assist.bmad.parser import parse_epic_file
 from bmad_assist.core.exceptions import ParserError
 
 
@@ -689,3 +690,524 @@ class TestSampleBmadProjectParsing:
             for review_file in review_files:
                 doc = parse_bmad_file(review_file)
                 assert doc.content, f"Review file {review_file.name} has no content"
+
+
+class TestFallbackStoryParsing:
+    """Tests for non-standard story format parsing (AC2-AC13 from tech-spec)."""
+
+    def test_fallback_parses_prsp_format(self, tmp_path: Path) -> None:
+        """Test parsing PRSP-5-1 style stories."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test Epic
+
+## Stories
+
+### PRSP-5-1: Add availability_mode Column
+**Status:** ready-for-dev
+**Estimate:** 2 SP
+
+Some description.
+
+### PRSP-5-2: Implement Room Drawer
+**Status:** backlog
+**Estimate:** 3 SP
+
+Another description.
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 2
+        assert epic.stories[0].number == "1.1"
+        assert epic.stories[0].title == "Add availability_mode Column"
+        assert epic.stories[0].code == "PRSP-5-1"
+        assert epic.stories[0].status == "ready-for-dev"
+        assert epic.stories[0].estimate == 2
+
+        assert epic.stories[1].number == "1.2"
+        assert epic.stories[1].title == "Implement Room Drawer"
+        assert epic.stories[1].code == "PRSP-5-2"
+        assert epic.stories[1].status == "backlog"
+
+    def test_fallback_parses_refactor_format(self, tmp_path: Path) -> None:
+        """Test parsing REFACTOR-2-1 style stories."""
+        epic_file = tmp_path / "epic-2.md"
+        epic_file.write_text(
+            """# Epic 2: Refactoring
+
+## Stories by Component
+
+### REFACTOR-2-1: Replace RadzenTextBox
+**Status:** done
+**Estimate:** 8 SP
+
+Description here.
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 1
+        assert epic.stories[0].number == "2.1"
+        assert epic.stories[0].title == "Replace RadzenTextBox"
+        assert epic.stories[0].code == "REFACTOR-2-1"
+        assert epic.stories[0].status == "done"
+
+    def test_fallback_sequential_numbering(self, tmp_path: Path) -> None:
+        """Test stories are numbered 1, 2, 3... regardless of original IDs."""
+        epic_file = tmp_path / "epic-5.md"
+        epic_file.write_text(
+            """# Epic 5: Test
+
+## Stories
+
+### ABC-99-1: First
+**Status:** backlog
+
+### XYZ-1-999: Second
+**Status:** backlog
+
+### DEF-42-7: Third
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 3
+        assert epic.stories[0].number == "5.1"
+        assert epic.stories[1].number == "5.2"
+        assert epic.stories[2].number == "5.3"
+
+    def test_fallback_preserves_code(self, tmp_path: Path) -> None:
+        """Test original code (PRSP-5-1) is preserved in code field."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### MY-CUSTOM-CODE-123: Some Title
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].code == "MY-CUSTOM-CODE-123"
+        assert epic.stories[0].title == "Some Title"
+
+    def test_fallback_mixed_heading_levels(self, tmp_path: Path) -> None:
+        """Test stories at ###, ####, ##### levels all detected."""
+        epic_file = tmp_path / "epic-3.md"
+        epic_file.write_text(
+            """# Epic 3: Mixed
+
+## Stories
+
+### CODE-1: Level 3
+**Status:** backlog
+
+#### CODE-2: Level 4
+**Status:** done
+
+##### CODE-3: Level 5
+**Status:** in-progress
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 3
+        assert epic.stories[0].title == "Level 3"
+        assert epic.stories[1].title == "Level 4"
+        assert epic.stories[2].title == "Level 5"
+
+    def test_fallback_logs_info_not_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test INFO (not WARNING) is logged when fallback is used."""
+        import logging
+
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### PRSP-1: Test Story
+**Status:** backlog
+"""
+        )
+
+        with caplog.at_level(logging.INFO):
+            parse_epic_file(epic_file)
+
+        # Should have INFO log about fallback parser
+        assert any(
+            "Non-standard story format" in record.message
+            and record.levelname == "INFO"
+            for record in caplog.records
+        )
+
+    def test_fallback_error_status_before_header(self, tmp_path: Path) -> None:
+        """Test ParserError raised when Status appears with no valid story headers."""
+        epic_file = tmp_path / "epic-1.md"
+        # Status in Stories section but no story headers at all
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+Some text with **Status:** orphan-status but no story headers.
+"""
+        )
+
+        with pytest.raises(ParserError, match="Found.*Status.*but no valid story headers"):
+            parse_epic_file(epic_file)
+
+    def test_fallback_skips_empty_headers(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test headers with no text are skipped with warning."""
+        import logging
+
+        epic_file = tmp_path / "epic-1.md"
+        # Create file with an empty header (### followed by just whitespace)
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+###
+**Status:** backlog
+
+### PRSP-1: Valid Story
+**Status:** done
+"""
+        )
+
+        with caplog.at_level(logging.WARNING):
+            epic = parse_epic_file(epic_file)
+
+        # Only valid story should be parsed
+        assert len(epic.stories) == 1
+        assert epic.stories[0].title == "Valid Story"
+
+    def test_fallback_cleans_status_trailing_asterisks(self, tmp_path: Path) -> None:
+        """Test '**Status:** done**' becomes 'done'."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### PRSP-1: Test
+**Status:** done**
+
+Description.
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].status == "done"
+
+    def test_fallback_ignores_status_outside_stories_section(
+        self, tmp_path: Path
+    ) -> None:
+        """Test **Status:** in Epic Overview is not detected as story."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+**Status:** active
+
+This epic is active.
+
+## Stories
+
+### PRSP-1: Real Story
+**Status:** backlog
+
+## Another Section
+
+**Status:** should-be-ignored
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        # Only the story in Stories section should be found
+        assert len(epic.stories) == 1
+        assert epic.stories[0].title == "Real Story"
+
+    def test_fallback_handles_duplicate_codes(self, tmp_path: Path) -> None:
+        """Test two stories with same code get different numbers."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### CODE-1: First Instance
+**Status:** done
+
+### CODE-1: Second Instance (duplicate code)
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 2
+        assert epic.stories[0].number == "1.1"
+        assert epic.stories[1].number == "1.2"
+        # Both have same code
+        assert epic.stories[0].code == "CODE-1"
+        assert epic.stories[1].code == "CODE-1"
+
+    def test_mixed_format_logs_info(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Test INFO logged when standard and non-standard stories mixed.
+
+        Standard stories use ### Story X.Y (level 3) inside ## Stories (level 2).
+        Non-standard stories also use ### but with different format.
+        """
+        import logging
+
+        epic_file = tmp_path / "epic-1.md"
+        # File with mixed formats - standard ### Story X.Y AND non-standard ### CODE:
+        # Both inside the ## Stories section
+        epic_file.write_text(
+            """---
+epic_num: 1
+title: "Test"
+---
+
+## Stories
+
+### Story 1.1: Standard Format
+**Status:** done
+
+### Story 1.2: Another Standard
+**Status:** backlog
+
+### PRSP-3: Non-standard (won't be parsed)
+**Status:** in-progress
+
+### PRSP-4: Another non-standard
+**Status:** pending
+
+## Next Section
+This ends the Stories section.
+"""
+        )
+
+        with caplog.at_level(logging.INFO):
+            epic = parse_epic_file(epic_file)
+
+        # Should only parse the 2 standard stories (fallback not triggered)
+        assert len(epic.stories) == 2
+        assert epic.stories[0].number == "1.1"
+        assert epic.stories[1].number == "1.2"
+        assert epic.stories[0].code is None  # Standard format has no code
+
+        # Should log about mixed format (2 standard, 4 total Status fields)
+        assert any(
+            "Mixed story format" in record.message for record in caplog.records
+        )
+
+    def test_standard_format_unchanged(self, tmp_path: Path) -> None:
+        """Test standard Story X.Y format still works (backward compat)."""
+        epic_file = tmp_path / "epic-3.md"
+        epic_file.write_text(
+            """---
+epic_num: 3
+title: "Test Epic"
+---
+
+## Story 3.1: First Story
+**Status:** done
+**Estimate:** 2 SP
+
+## Story 3.2: Second Story
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert len(epic.stories) == 2
+        assert epic.stories[0].number == "3.1"
+        assert epic.stories[0].title == "First Story"
+        assert epic.stories[1].number == "3.2"
+        assert epic.stories[1].title == "Second Story"
+
+    def test_standard_format_no_code_field(self, tmp_path: Path) -> None:
+        """Test code field is None for standard format."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """---
+epic_num: 1
+title: "Test"
+---
+
+## Story 1.1: Standard Story
+**Status:** done
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].code is None
+
+    def test_fallback_extracts_dependencies_non_standard(self, tmp_path: Path) -> None:
+        """Test dependencies with non-standard codes are extracted."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### PRSP-5-1: First
+**Status:** done
+
+### PRSP-5-2: Second
+**Status:** backlog
+**Dependencies:** PRSP-5-1
+
+### PRSP-5-3: Third
+**Status:** backlog
+**Dependencies:** PRSP-5-1, PRSP-5-2
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].dependencies == []
+        assert epic.stories[1].dependencies == ["PRSP-5-1"]
+        assert epic.stories[2].dependencies == ["PRSP-5-1", "PRSP-5-2"]
+
+    def test_fallback_title_only_no_code(self, tmp_path: Path) -> None:
+        """Test header without colon results in title only, no code."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### Simple Title Without Code
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].title == "Simple Title Without Code"
+        assert epic.stories[0].code is None
+
+    def test_parse_real_epic1_file(self) -> None:
+        """Integration test with epic-1.md from project root."""
+        epic_path = Path(__file__).parents[2] / "epic-1.md"
+        if not epic_path.exists():
+            pytest.skip("epic-1.md not found in project root")
+
+        epic = parse_epic_file(epic_path)
+
+        # Should have parsed stories using fallback
+        assert len(epic.stories) > 0
+        # First story should have code like PRSP-5-1
+        assert epic.stories[0].code is not None
+        assert "PRSP" in epic.stories[0].code
+        # Should have sequential numbering
+        assert epic.stories[0].number == "1.1"
+
+    def test_parse_real_epic2_file(self) -> None:
+        """Integration test with epic-2.md from project root."""
+        epic_path = Path(__file__).parents[2] / "epic-2.md"
+        if not epic_path.exists():
+            pytest.skip("epic-2.md not found in project root")
+
+        epic = parse_epic_file(epic_path)
+
+        # Should have parsed stories using fallback
+        assert len(epic.stories) > 0
+        # First story should have code like REFACTOR-2-1
+        assert epic.stories[0].code is not None
+        assert "REFACTOR" in epic.stories[0].code
+        # Should have sequential numbering
+        assert epic.stories[0].number == "2.1"
+
+    def test_fallback_phase_headers_skipped(self, tmp_path: Path) -> None:
+        """Test phase headers without Status are skipped."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories by Phase
+
+### Phase 5: Room Rota System
+
+#### PRSP-5-1: First Story
+**Status:** done
+
+### Phase 6: Staff Planner
+
+#### PRSP-6-1: Second Story
+**Status:** backlog
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        # Only actual stories (with Status) should be parsed
+        assert len(epic.stories) == 2
+        assert epic.stories[0].title == "First Story"
+        assert epic.stories[1].title == "Second Story"
+        # Phase headers should not be in results
+        assert not any("Phase" in s.title for s in epic.stories)
+
+    def test_fallback_acceptance_criteria_counted(self, tmp_path: Path) -> None:
+        """Test acceptance criteria checkboxes are counted."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+### PRSP-1: Story With Criteria
+**Status:** in-progress
+
+**Acceptance Criteria:**
+- [x] First criterion done
+- [x] Second criterion done
+- [ ] Third criterion pending
+- [ ] Fourth criterion pending
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        assert epic.stories[0].completed_criteria == 2
+        assert epic.stories[0].total_criteria == 4
+
+    def test_fallback_empty_stories_section(self, tmp_path: Path) -> None:
+        """Test empty Stories section returns empty list without error."""
+        epic_file = tmp_path / "epic-1.md"
+        epic_file.write_text(
+            """# Epic 1: Test
+
+## Stories
+
+## Next Section
+"""
+        )
+
+        epic = parse_epic_file(epic_file)
+
+        # Empty stories section should return empty list, not error
+        assert len(epic.stories) == 0

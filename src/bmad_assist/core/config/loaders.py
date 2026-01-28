@@ -101,6 +101,74 @@ def _load_yaml_file(path: Path) -> dict[str, Any]:
         raise ConfigError(f"Cannot read config file {path}: {e}") from e
 
 
+def _identify_error_source(
+    error_msg: str,
+    global_data: dict[str, Any] | None,
+    cwd_data: dict[str, Any] | None,
+    project_data: dict[str, Any] | None,
+    global_path: Path | None,
+    cwd_path: Path | None,
+    project_path: Path | None,
+) -> str | None:
+    """Try to identify which config file caused a validation error.
+
+    Parses Pydantic error messages to extract the field path, then checks
+    which config file contains that field to identify the source.
+
+    Args:
+        error_msg: The error message from Pydantic validation.
+        global_data: Parsed global config data (or None).
+        cwd_data: Parsed CWD config data (or None).
+        project_data: Parsed project config data (or None).
+        global_path: Path to global config file.
+        cwd_path: Path to CWD config file.
+        project_path: Path to project config file.
+
+    Returns:
+        Human-readable source identifier (e.g., "project (/path/to/config.yaml)")
+        or None if source cannot be determined.
+
+    """
+    import re
+
+    # Extract field path from Pydantic error message
+    # Examples:
+    #   "paths.project_knowledge\n  value is not..."
+    #   "providers.master.model\n  Field required..."
+    field_match = re.search(r"(\w+(?:\.\w+)*)\s*\n\s*", error_msg)
+    if not field_match:
+        return None
+
+    field_path = field_match.group(1)
+    field_parts = field_path.split(".")
+
+    def has_field(data: dict[str, Any] | None, parts: list[str]) -> bool:
+        """Check if data contains the field path."""
+        if data is None:
+            return False
+        current = data
+        for part in parts:
+            if not isinstance(current, dict) or part not in current:
+                return False
+            current = current[part]
+        return True
+
+    # Check configs in reverse priority order (project overrides cwd overrides global)
+    # Return the LAST one that has the field (highest priority = source of final value)
+    sources: list[tuple[dict[str, Any] | None, Path | None, str]] = [
+        (global_data, global_path, "global"),
+        (cwd_data, cwd_path, "CWD"),
+        (project_data, project_path, "project"),
+    ]
+
+    found_source: str | None = None
+    for data, path, name in sources:
+        if has_field(data, field_parts) and path is not None:
+            found_source = f"{name} ({path})"
+
+    return found_source
+
+
 def load_config(config_data: dict[str, Any]) -> Config:
     """Load and validate configuration from a dictionary.
 
@@ -380,7 +448,21 @@ def load_config_with_project(
         return load_config(merged_data)
     except ConfigError as e:
         # Singleton already cleared by load_config on validation failure
-        # Build descriptive error message based on which configs were loaded
+        # Try to identify which config file caused the error
+        error_source = _identify_error_source(
+            str(e),
+            global_data if global_exists else None,
+            cwd_data,
+            project_data,
+            resolved_global if global_exists else None,
+            resolved_cwd_config if cwd_exists else None,
+            project_config_path if project_exists else None,
+        )
+
+        if error_source:
+            raise ConfigError(f"Invalid configuration in {error_source}: {e}") from e
+
+        # Fallback: list all sources if we can't identify the specific one
         sources = []
         if global_exists:
             sources.append(f"global ({resolved_global})")
@@ -390,11 +472,11 @@ def load_config_with_project(
             sources.append(f"project ({project_config_path})")
 
         if len(sources) > 1:
-            raise ConfigError(f"Invalid configuration (merged from {' + '.join(sources)})") from e
+            raise ConfigError(f"Invalid configuration (merged from {' + '.join(sources)}): {e}") from e
         elif sources:
-            raise ConfigError(f"Invalid configuration in {sources[0]}") from e
+            raise ConfigError(f"Invalid configuration in {sources[0]}: {e}") from e
         else:
-            raise ConfigError("Invalid configuration") from e
+            raise ConfigError(f"Invalid configuration: {e}") from e
 
 
 def get_phase_timeout(config: Config, phase: str) -> int:

@@ -1,0 +1,65 @@
+patch:
+  name: "create-story-optimizer"
+  version: "3.0.0"
+  author: "Pawel N"
+  description: "Optimizes create-story workflow - removes programmatically handled steps, embeds all context"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "create-story"
+
+git_intelligence:
+  enabled: true
+  embed_marker: "git-intelligence"
+  no_git_message: |
+    This project is not under git version control.
+    Do NOT attempt to run git commands - they will fail.
+    Focus on embedded context and file reading instead.
+  commands:
+    - name: "Recent Commits (last 5)"
+      command: "git log --oneline -5"
+    - name: "Related Story Commits"
+      command: "git log --grep='{{epic_num}}\\.' --oneline -5 2>/dev/null || echo '(no related commits)'"
+    - name: "Recently Modified Files (excluding docs/)"
+      command: "git diff --name-only HEAD~5 -- ':!docs/*.md' ':!*.md' 2>/dev/null | head -10 || echo '(not enough commits)'"
+    # NOTE: Exclude docs/*.md from diff - documentation changes are not relevant for story creation
+
+transforms:
+  - "Remove step 1 (Determine target story) completely - story discovery is handled programmatically by the compiler"
+  - "Remove step 2 (Load and analyze core artifacts) completely - artifact loading and variable resolution is handled programmatically by the compiler"
+  - "Remove ALL sprint status related content: references to sprint-status.yaml, any <action> or <check> blocks that read/write/update sprint status, any instructions about marking stories in sprint tracking, any 'Update sprint status' or 'Save to sprint-status' type operations. Sprint tracking is managed programmatically by bmad-assist, not by LLM."
+  - "Renumber remaining steps sequentially starting from 1"
+  - "Add instruction in <critical> section: Git Intelligence is EMBEDDED in <git-intelligence> at the start of the prompt - do NOT run git commands yourself, use the embedded data instead"
+
+# Post-process rules are loaded from defaults.yaml
+# Workflow-specific rules below (extend defaults)
+post_process:
+  # Remove <check if="sprint status...">...</check> blocks completely
+  - pattern: '\s*<check if="sprint status[^"]*">.*?</check>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove any <action> that mentions sprint-status.yaml or sprint tracking
+  - pattern: '\s*<action>[^<]*sprint-status[^<]*</action>\s*'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove any <action> that says "Update sprint" or similar
+  - pattern: '\s*<action>[^<]*[Uu]pdate[^<]*sprint[^<]*</action>\s*'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Inject explicit negative instruction at the start of workflow
+  - pattern: '(<workflow>\s*)'
+    replacement: |
+      \1<critical>🚫 SCOPE LIMITATION: Your ONLY task is to create the story markdown file. Do NOT read, modify, or update any sprint tracking files - that is handled programmatically by bmad-assist.</critical>
+    flags: "DOTALL"
+
+validation:
+  must_contain:
+    - "<step"
+    - "<critical"
+  must_not_contain:
+    - "sprint-status"
+    - "sprint_status"
+    - "{installed_path}"

@@ -11,9 +11,16 @@ The service respects strategic_context configuration in bmad-assist.yaml:
 - If config is absent (None): legacy behavior (load all docs)
 - If config is present: use per-workflow include lists and main_only flags
 - budget=0 disables strategic context entirely
+
+Token budget behavior:
+- Documents are loaded in order; first doc always loads fully
+- Subsequent docs are truncated to fit remaining budget (not skipped entirely)
+- Truncation finds sensible cut points (markdown headers, blank lines)
+- Slight budget overruns (~10%) are acceptable for better cut points
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -50,6 +57,70 @@ DOC_PATTERNS: dict[str, tuple[list[str] | None, str | None, DocType | None]] = {
     # Prioritized patterns - try specific first, then fallback
     "ux": (["ux.md", "ux-design.md", "ux-*.md"], "ux", "ux"),
 }
+
+# Truncation notice appended to truncated content
+TRUNCATION_NOTICE = "\n\n<!-- TRUNCATED: Content exceeded token budget. See full document for details. -->"
+
+# Allow 10% budget overrun to find better cut points
+BUDGET_OVERRUN_FACTOR = 1.10
+
+
+def _truncate_content(content: str, target_tokens: int) -> tuple[str, int]:
+    """Truncate content at a sensible markdown boundary.
+
+    Finds the best cut point near target_tokens:
+    1. Look for markdown headers (## or ###) near the target
+    2. Fall back to blank lines (paragraph boundaries)
+    3. Last resort: cut at target with word boundary
+
+    Allows ~10% overrun to find better cut points.
+
+    Args:
+        content: Full content to truncate.
+        target_tokens: Target token count for truncated content.
+
+    Returns:
+        Tuple of (truncated_content, actual_tokens).
+
+    """
+    # Convert tokens to approximate character count (4 chars/token)
+    target_chars = target_tokens * 4
+    max_chars = int(target_chars * BUDGET_OVERRUN_FACTOR)
+
+    if len(content) <= max_chars:
+        return content, estimate_tokens(content)
+
+    # Search window: from 80% of target to max
+    search_start = int(target_chars * 0.8)
+    search_end = min(max_chars, len(content))
+    search_region = content[search_start:search_end]
+
+    best_cut = target_chars  # Default cut point
+
+    # Strategy 1: Find last markdown header (## or ###) in search region
+    header_pattern = re.compile(r'\n#{2,3}\s+[^\n]+\n')
+    headers = list(header_pattern.finditer(search_region))
+    if headers:
+        # Cut before the last header in search region
+        best_cut = search_start + headers[-1].start()
+    else:
+        # Strategy 2: Find last blank line (paragraph boundary)
+        blank_line_pattern = re.compile(r'\n\s*\n')
+        blanks = list(blank_line_pattern.finditer(search_region))
+        if blanks:
+            best_cut = search_start + blanks[-1].end()
+        else:
+            # Strategy 3: Find last word boundary near target
+            # Look for space or punctuation
+            for i in range(min(target_chars, len(content) - 1), search_start, -1):
+                if content[i] in ' \n\t.,;:!?':
+                    best_cut = i + 1
+                    break
+
+    truncated = content[:best_cut].rstrip() + TRUNCATION_NOTICE
+    actual_tokens = estimate_tokens(truncated)
+
+    return truncated, actual_tokens
 
 
 class StrategicContextService:
@@ -178,7 +249,7 @@ class StrategicContextService:
         files: dict[str, str] = {}
         total_tokens = 0
         loaded_docs: list[str] = []
-        skipped_docs: list[str] = []
+        truncated_docs: list[str] = []
 
         for doc_type in include:
             path, content = self._load_doc(doc_type, main_only)
@@ -187,27 +258,53 @@ class StrategicContextService:
                 continue
 
             tokens = estimate_tokens(content)
+            remaining_budget = budget - total_tokens
 
-            # Budget check - but always load at least 1 file
-            if total_tokens + tokens > budget and files:
-                logger.warning(
-                    "Skipping %s (%d tokens): would exceed budget %d", doc_type, tokens, budget
-                )
-                skipped_docs.append(doc_type)
+            # First file always loads fully
+            if not files:
+                files[path] = content
+                total_tokens += tokens
+                loaded_docs.append(doc_type)
                 continue
 
-            files[path] = content
-            total_tokens += tokens
-            loaded_docs.append(doc_type)
+            # Check if file fits within remaining budget (with 10% tolerance)
+            if tokens <= remaining_budget * BUDGET_OVERRUN_FACTOR:
+                # Fits - load fully
+                files[path] = content
+                total_tokens += tokens
+                loaded_docs.append(doc_type)
+            elif remaining_budget >= 500:  # Only truncate if meaningful space remains
+                # Truncate to fit remaining budget
+                truncated_content, actual_tokens = _truncate_content(content, remaining_budget)
+                files[path] = truncated_content
+                total_tokens += actual_tokens
+                loaded_docs.append(doc_type)
+                truncated_docs.append(f"{doc_type}:{tokens}->{actual_tokens}")
+                logger.info(
+                    "Truncated %s from %d to %d tokens (budget remaining: %d)",
+                    doc_type,
+                    tokens,
+                    actual_tokens,
+                    remaining_budget,
+                )
+            else:
+                # Not enough budget for meaningful truncation
+                logger.debug(
+                    "Skipping %s (%d tokens): only %d tokens remaining",
+                    doc_type,
+                    tokens,
+                    remaining_budget,
+                )
 
         # Telemetry logging at INFO level
+        truncation_info = f" [truncated: {', '.join(truncated_docs)}]" if truncated_docs else ""
         logger.info(
             "Strategic context for %s: %d tokens (%d docs: %s)%s",
             self.workflow_name,
             total_tokens,
             len(loaded_docs),
             ", ".join(loaded_docs) if loaded_docs else "none",
-            f" [skipped: {', '.join(skipped_docs)}]" if skipped_docs else "",
+            truncation_info,
         )
 
         return files

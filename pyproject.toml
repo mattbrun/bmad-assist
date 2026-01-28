@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bmad-assist"
-version = "0.4.11"
+version = "0.4.12"
 description = "CLI tool for automating BMAD methodology development loop"
 readme = "README.md"
 license = {text = "MIT"}
@@ -44,7 +44,7 @@ bmad-assist = "bmad_assist.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-bmad_assist = ["workflows/**/*"]
+bmad_assist = ["workflows/**/*", "default_patches/*.yaml"]
 
 [tool.mypy]
 python_version = "3.11"

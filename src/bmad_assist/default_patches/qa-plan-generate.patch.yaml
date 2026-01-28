@@ -1,0 +1,130 @@
+patch:
+  name: "qa-plan-generate-optimizer"
+  version: "1.0.0"
+  author: "BMad"
+  description: "Enhance QA plan generation with strict selector usage and project context"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "qa-plan-generate"
+
+# No transforms needed - CRITICAL Output Requirements are in instructions.md
+# This patch uses only post_process (regex) for instant application without LLM
+
+# Post-process rules - enhance prompt with strict selector requirements
+post_process:
+  # Inject ULTRA-CRITICAL selector requirement at the very start
+  - pattern: '(<mission>.*?</mission>)'
+    replacement: |
+      \1
+
+      <ultra-critical>
+      ## SELECTOR RULES - ABSOLUTELY MANDATORY
+
+      For ALL Category B (Playwright) tests:
+
+      1. **ONLY USE** selectors from the embedded `ux-elements.md` file
+      2. **NEVER INVENT** selector names - if it's not in ux-elements.md, DON'T USE IT
+      3. **USE EXACT** data-testid values as documented - no variations, no guessing
+      4. **IF UNSURE** - mark test as Category C (Human Verification) instead
+
+      VIOLATION OF THESE RULES = INVALID TEST PLAN
+
+      Example CORRECT selector usage:
+      ```typescript
+      await page.locator('[data-testid="experiments-panel"]').click();
+      await page.locator('[data-testid="new-experiment-btn"]').click();
+      ```
+
+      Example INCORRECT (FORBIDDEN):
+      ```typescript
+      await page.locator('[data-testid="experiment-list"]').click();  // NOT in ux-elements!
+      await page.locator('.experiment-button').click();  // CSS classes forbidden!
+      ```
+      </ultra-critical>
+    flags: "DOTALL"
+
+  # Enhance Category B section with additional constraints
+  - pattern: '(## Category B Tests.*?### Prerequisites)'
+    replacement: |
+      \1
+
+      <critical>
+      BEFORE writing ANY Category B test, verify:
+      1. The data-testid exists in the embedded ux-elements.md
+      2. You are using the EXACT attribute value (case-sensitive)
+      3. The element is appropriate for the test action (click, fill, etc.)
+
+      If the selector is NOT in ux-elements.md:
+      - Move the test to Category C (Human Verification)
+      - Add note: "Requires selector discovery or ux-elements.md update"
+      </critical>
+
+    flags: "DOTALL"
+
+  # Add forceClick helper reminder
+  - pattern: '(### forceClick Helper)'
+    replacement: |
+      \1
+
+      <note>
+      Use forceClick() for elements that may be:
+      - Below viewport (footer buttons)
+      - Covered by other elements
+      - Requiring scroll into view
+
+      Example elements needing forceClick:
+      - Footer navigation buttons
+      - Pagination controls
+      - Elements at page bottom
+      </note>
+
+    flags: "DOTALL"
+
+  # Inject project-specific patterns at end
+  - pattern: '(<!-- QA_PLAN_END -->)'
+    replacement: |
+      ## Project-Specific Test Patterns
+
+      ### Dashboard API Base URL
+      ```typescript
+      const BASE_URL = 'http://localhost:8765';
+      ```
+
+      ### Common Test Setup
+      ```typescript
+      test.beforeEach(async ({ page }) => {
+        await page.goto(BASE_URL);
+        await page.waitForSelector('[data-testid="app-container"]');
+      });
+      ```
+
+      ### Selector Verification Helper
+      ```typescript
+      async function verifySelector(page: Page, testId: string): Promise<boolean> {
+        const locator = page.locator(`[data-testid="${testId}"]`);
+        return await locator.count() > 0;
+      }
+      ```
+
+      \1
+    flags: "DOTALL"
+
+# Embed content paths
+embed_content:
+  # UX elements are embedded by compiler, but ensure path is documented
+  - source: "{project_root}/docs/modules/dashboard/ux-elements.md"
+    target: "{{UX_ELEMENTS}}"
+    required: false
+    note: "Embedded by compiler _load_ux_elements()"
+
+validation:
+  must_contain:
+    - "## Test Categories Summary"
+    - "## Category A Tests"
+    - "## Category B Tests"
+    - "## Category C Tests"
+  must_not_contain_when_compiled:
+    - "data-testid=\"PLACEHOLDER"
+    - "data-testid=\"example-"
+    - ".example-class"

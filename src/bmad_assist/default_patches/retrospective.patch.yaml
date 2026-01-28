@@ -1,0 +1,227 @@
+# Retrospective Workflow Patch
+# Transforms interactive retrospective into standalone automated workflow
+# Pattern: Remove all interactivity, consolidate output with markers
+
+patch:
+  name: "retrospective-automated"
+  version: "2.0.0"
+  author: "bmad-assist"
+  description: "Transforms retrospective from interactive party-mode to automated single-output workflow with extraction markers"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "retrospective"
+
+transforms:
+  # === CRITICAL: REMOVE ALL INTERACTIVITY ===
+  - "Remove ALL <ask> blocks - no user interaction in automated mode"
+  - "Remove ALL 'WAIT for {user_name}' actions - workflow runs autonomously"
+  - "Remove ALL 'WAIT for user' variations"
+  - "Remove party-mode dialogue format requirements - output is structured report only"
+
+  # === SCOPE LIMITATION ===
+  - "Add CRITICAL instruction at workflow start: 'SCOPE LIMITATION: You are an AUTOMATED RETROSPECTIVE GENERATOR. Your ONLY output should be a structured retrospective report wrapped in extraction markers. Do NOT use party-mode dialogue. Do NOT wait for user input. Do NOT write files. Generate the complete retrospective in ONE response.'"
+
+  # === OUTPUT CONSOLIDATION ===
+  - "Consolidate all output into step 11 as single retrospective document"
+  - "Remove intermediate <output> blocks from steps 1-10 - only analysis, no dialogue"
+  - "Step 11 becomes the ONLY output step with markers"
+
+  # === OUTPUT MARKERS ===
+  - "In step 11, wrap entire retrospective output with: <!-- RETROSPECTIVE_REPORT_START --> at start and <!-- RETROSPECTIVE_REPORT_END --> at end"
+  - "The retrospective document MUST be valid markdown starting with '# Epic {epic_number} Retrospective'"
+
+  # === FILE OPERATIONS REMOVAL ===
+  - "Remove all file save actions - orchestrator handles persistence"
+  - "Remove folder creation actions - orchestrator handles directories"
+  - "Remove sprint-status update actions - loop handler manages status"
+
+# Post-process rules for deterministic transforms
+post_process:
+  # === REMOVE ALL INTERACTIVITY (must be first) ===
+  # Remove <ask> blocks completely
+  - pattern: '\s*<ask[^>]*>.*?</ask>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove single-line <ask> without closing tag
+  - pattern: '\s*<ask[^/>]*/>s*'
+    replacement: ""
+    flags: ""
+
+  # Remove WAIT actions (all variations)
+  - pattern: '<action>WAIT for \{user_name\}[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  - pattern: '<action>WAIT for user[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  - pattern: '<action>\s*WAIT\s+for[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE|DOTALL"
+
+  # Remove HALT actions
+  - pattern: '<action>HALT[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove invoke-protocol (discover_inputs handled by compiler)
+  - pattern: '\s*<invoke-protocol[^>]*/>\s*'
+    replacement: "<!-- input discovery handled by compiler -->"
+    flags: ""
+
+  # === REMOVE PARTY-MODE DIALOGUE BLOCKS ===
+  # Remove <output> blocks with party-mode dialogue (Name (Role):)
+  - pattern: '<output>\s*(?:Bob|Alice|Charlie|Dana|Elena|Frank)[^<]*\([^)]+\):[^<]*</output>'
+    replacement: "<!-- party-mode output removed for automation -->"
+    flags: "DOTALL"
+
+  # Remove multi-line party-mode outputs (more aggressive)
+  - pattern: '<output>[^<]*(?:Bob|Alice|Charlie|Dana|Elena)\s*\([^)]+\):[^<]*</output>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # === STEP 11 MARKER INJECTION ===
+  # Transform step 11 to include markers and structured output
+  - pattern: '<step n="11" goal="Save Retrospective[^"]*">'
+    replacement: |
+      <step n="11" goal="Generate Retrospective Report with Extraction Markers">
+
+      <critical>OUTPUT FORMAT REQUIRED:
+      Your retrospective report MUST be wrapped with extraction markers:
+
+      <!-- RETROSPECTIVE_REPORT_START -->
+      # Epic {{epic_number}} Retrospective: {{epic_title}}
+
+      ## Executive Summary
+      [Brief overview of epic outcomes]
+
+      ## What Went Well
+      [List successes with specific examples from stories]
+
+      ## What Didn't Go Well
+      [List challenges with specific examples from stories]
+
+      ## Key Learnings
+      [Actionable insights extracted from implementation]
+
+      ## Action Items
+      [Specific, owned, time-bound improvements]
+
+      ## Metrics
+      - Stories Completed: X/Y
+      - Technical Debt Items: N
+      - Blockers Encountered: N
+
+      ## Preparation for Next Epic
+      [If next epic exists, list dependencies and preparation needed]
+
+      <!-- RETROSPECTIVE_REPORT_END -->
+
+      The orchestrator extracts ONLY content between these markers.
+      Do NOT include party-mode dialogue in the report.
+      Do NOT save files - output to stdout only.</critical>
+    flags: ""
+
+  # === REMOVE FILE OPERATIONS ===
+  - pattern: '<action>Ensure retrospectives folder exists[^<]*</action>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<action>Create folder if it doesn.t exist</action>'
+    replacement: ""
+    flags: ""
+
+  - pattern: '<action>Save retrospective document</action>'
+    replacement: "<action>Output the complete retrospective document between extraction markers</action>"
+    flags: ""
+
+  - pattern: '<action>Set filename:[^<]*</action>'
+    replacement: "<!-- filename determined by orchestrator -->"
+    flags: "DOTALL"
+
+  # === REMOVE SPRINT STATUS UPDATES ===
+  - pattern: '<action>Update \{sprint_status_file\}[^<]*</action>'
+    replacement: "<!-- sprint status handled by loop handler -->"
+    flags: "DOTALL"
+
+  - pattern: '<action>Load the FULL file: \{sprint_status_file\}</action>'
+    replacement: ""
+    flags: ""
+
+  - pattern: '<action>Find development_status key[^<]*</action>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<action>Verify current status[^<]*</action>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<action>Update development_status\[.*?\].*?</action>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<action>Save file, preserving ALL comments[^<]*</action>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<check if="update successful">.*?</check>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<check if="retrospective key not found">.*?</check>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # === SIMPLIFY CHECK BLOCKS WITH USER INTERACTION ===
+  - pattern: '<check if="\{user_name\}[^"]*">.*?</check>'
+    replacement: ""
+    flags: "DOTALL"
+
+  - pattern: '<check if="user says[^"]*">.*?</check>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # === CLEAN UP EMPTY STEPS ===
+  # Remove steps that are now empty after removing interactivity
+  - pattern: '<step[^>]*>\s*<!--[^>]*-->\s*</step>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # === DEDUP MARKERS ===
+  - pattern: '(<!-- RETROSPECTIVE_REPORT_START -->\s*){2,}'
+    replacement: '<!-- RETROSPECTIVE_REPORT_START -->\n'
+    flags: ""
+
+  - pattern: '(<!-- RETROSPECTIVE_REPORT_END -->\s*){2,}'
+    replacement: '<!-- RETROSPECTIVE_REPORT_END -->\n'
+    flags: ""
+
+  # === INJECT AUTOMATION PREAMBLE ===
+  - pattern: '(<workflow>)'
+    replacement: |
+      \1
+
+      <critical>AUTOMATED MODE: This retrospective runs WITHOUT user interaction.
+      - Analyze all provided context (epic, stories, sprint-status, previous retro)
+      - Generate a SINGLE structured retrospective report
+      - Wrap output in extraction markers
+      - Do NOT use party-mode dialogue format
+      - Do NOT wait for user input
+      - Do NOT save files directly</critical>
+    flags: ""
+
+validation:
+  must_contain:
+    - "RETROSPECTIVE_REPORT_START"
+    - "RETROSPECTIVE_REPORT_END"
+    - "<step"
+    - "AUTOMATED MODE"
+  must_not_contain:
+    - "WAIT for {user_name}"
+    - "WAIT for user"
+    - "<ask>"
+    - "Save retrospective document"
+    - "Create folder if it doesn't exist"

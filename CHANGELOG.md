@@ -2,6 +2,31 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.12] - 2026-01-28
+
+### Added
+- **Flexible Epic Story Parser** with fallback for non-standard formats (thanks @Richard)
+  - Parses `PRSP-5-1`, `REFACTOR-2-1` style story headers when standard `## Story X.Y:` not found
+  - Status-anchored detection: finds stories by `**Status:**` field presence
+  - Sequential numbering (1.1, 1.2, 1.3...) regardless of original IDs
+  - New `code` field on `EpicStory` preserves original story codes
+  - Mixed heading levels supported (###, ####, #####)
+  - Non-standard dependency extraction (`**Dependencies:** PRSP-5-1, PRSP-5-2`)
+- **Default patches fallback** for pip-installed users without local BMAD installation (thanks [@mattbrun](https://github.com/mattbrun))
+- **GitHub Actions CI** workflow for tests, mypy, and ruff
+- **Test health initiative** completed - mutation testing analysis, 73% mutation score achieved
+
+### Fixed
+- **Scorecard:** gosec reliability and error handling, eliminate false positives when tools not installed
+- **Config validation:** identify specific config file causing errors, include actual validation error in messages
+- **Strategic context:** truncate docs instead of skipping when over token budget (thanks [@mattbrun](https://github.com/mattbrun))
+- **Mypy:** resolve all type errors, enable strict CI checks
+- **CI tests:** Rich/Typer help tests now skip properly in Docker/root environments
+
+### Changed
+- `_extract_status()` now cleans trailing asterisks (handles typos like `done**`)
+- `_parse_story_sections()` accepts optional `epic_num` and `path` parameters
+
 ## [0.4.11] - 2026-01-27
 
 ### Added

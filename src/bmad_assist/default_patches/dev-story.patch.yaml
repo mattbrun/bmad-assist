@@ -1,0 +1,230 @@
+# dev-story patch for bmad-assist automation
+# Removes interactivity and configures automated execution for Master LLM
+#
+# Key differences from validate-create-story:
+# - READ+WRITE permission (not READ-ONLY)
+# - No output-template markers (action workflow, not validation)
+# - HALT transformed to FAILURE CONDITIONS (not removed)
+# - Implementation-focused git commands
+
+patch:
+  name: "dev-story-automation"
+  version: "1.0.0"
+  author: "BMad"
+  description: "Removes interactivity from dev-story for bmad-assist automation - Master LLM implements story with READ+WRITE permission"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "dev-story"
+  # NOTE: dev-story has 10 steps in instructions.xml
+  # Steps 1, 4, 10 are removed (discovery, sprint-status, user comms)
+  # Remaining steps renumbered: 2,3,5,6,7,8,9 -> 1,2,3,4,5,6,7
+
+git_intelligence:
+  enabled: true
+  embed_marker: "git-intelligence"
+  no_git_message: |
+    This project is not under git version control.
+    Do NOT attempt to run git commands - they will fail.
+    Focus on embedded context and file reading instead.
+  commands:
+    - name: "Recent Implementation Commits"
+      command: "git log --oneline -10"
+    - name: "Current Branch Status"
+      command: "git status --short"
+    - name: "Uncommitted Changes (excluding docs/)"
+      command: "git diff --stat -- ':!docs/*.md' ':!*.md'"
+    # NOTE: Do NOT use story file history - that's for validators
+    # NOTE: Exclude docs/*.md from diff - documentation is not relevant for implementation
+
+transforms:
+  # === SCOPE INSTRUCTION (READ+WRITE - unlike validators) ===
+  - "Add ONE CRITICAL instruction at workflow start (first element after <workflow>): 'SCOPE: You are the MASTER implementation agent with READ+WRITE permission. You MAY and MUST modify source code and tests to implement the story. You may only modify the story markdown in the specified sections (Tasks, Dev Agent Record, File List, Change Log, Status).'"
+
+  # === PRESERVE KEY PHRASES ===
+  - "CRITICAL: Preserve the EXACT phrase 'red-green-refactor' wherever it appears (step 5 goal and action). Do NOT paraphrase, rephrase, or remove this phrase - it is a validation requirement."
+
+  # === STEP REMOVAL ===
+  # NOTE: Step removal and renumbering is now handled deterministically by post_process rules.
+  # Original dev-story has 10 steps:
+  #   1. Find next ready story (file discovery) - REMOVE (handled by compiler)
+  #   2. Load project context - REMOVE (already embedded)
+  #   3. Detect review continuation - KEEP (->1)
+  #   4. Mark story in-progress (sprint-status) - REMOVE (managed by loop handler)
+  #   5. Implement task (red-green-refactor) - KEEP (->2)
+  #   6. Author comprehensive tests - KEEP (->3)
+  #   7. Run validations and tests - KEEP (->4)
+  #   8. Validate and mark task complete - KEEP (->5)
+  #   9. Story completion with sprint-status - REMOVE (status managed by loop handler)
+  #   10. Completion communication (user support) - REMOVE (no interactive user)
+  # LLM still needs to understand the semantic changes (kept for context understanding):
+
+  # === GOTO/ANCHOR REMOVAL ===
+  - "Remove ALL <goto step='X'> elements - they reference old step numbers that become invalid after renumbering. The workflow executes linearly without jumps."
+  - "Remove ALL <goto anchor='...'> elements - anchors are being removed, so goto references to them are invalid."
+  - "Remove ALL <anchor id='...'> elements - they are no longer needed without goto statements."
+
+  # === REFERENCE UPDATES ===
+  - "Replace all {installed_path} references with 'embedded context' - compiler pre-loads all needed files."
+  - "Replace the <critical> that says 'You MUST have already loaded and processed: {installed_path}/workflow.yaml' with: 'All configuration and context is available in the VARIABLES section below. Use these resolved values directly.'"
+
+  # === SCOPE CLARIFICATION (READ+WRITE for source code) ===
+  - "Transform the <critical> that says 'Only modify the story file in these areas...' to clarify permissions: 'STORY FILE EDITS: Only modify the story markdown in these sections: Tasks/Subtasks checkboxes, Dev Agent Record, File List, Change Log, and Status. SOURCE CODE EDITS: You have FULL READ+WRITE permission to modify source code, tests, and configuration files as needed to implement the story.'"
+
+  # === HALT SEMANTIC CONVERSION ===
+  # NOTE: filtering.py (lines 108-111) already removes elements containing HALT in text.
+  # These transforms tell LLM to convert HALT semantics to FAILURE conditions BEFORE filtering.
+  - "Transform all HALT instructions to FAILURE CONDITIONS that preserve safety semantics. Example: '<action>HALT - Fix regression issues before completing</action>' becomes '<critical>FAILURE CONDITION: Fix regression issues before continuing. Do NOT proceed until this is resolved.</critical>'"
+  - "For each HALT that indicates a blocking condition (missing config, repeated failures, regression failures), convert to a <critical>FAILURE CONDITION:</critical> that clearly states what must be fixed before continuing."
+
+  # === STEP 9 (now step 7) SPRINT-STATUS CLEANUP ===
+  - "In step 7 (Story completion - renumbered from step 9), remove all sprint-status.yaml file operations. The loop handler manages sprint-status programmatically. Keep only the story file status update to 'Ready for Review'."
+  - "Remove <check> blocks that reference sprint_status file existence or updating."
+  - "Remove any instructions to save or update sprint-status.yaml."
+
+# Post-process rules extend defaults.yaml (auto-applied by load_patch())
+# NOTE: These run AFTER LLM transforms, on final .tpl.xml output
+post_process:
+  # === OBSOLETE CRITICAL REMOVAL ===
+  # Remove critical about workflow.xml execution engine (not relevant for compiled prompt)
+  - pattern: '<critical>The workflow execution engine is governed by:[^<]*</critical>\s*'
+    replacement: ""
+    flags: ""
+
+  # Remove critical about loading workflow.yaml (already processed by compiler)
+  - pattern: '<critical>You MUST have already loaded and processed:[^<]*workflow\.yaml[^<]*</critical>\s*'
+    replacement: ""
+    flags: ""
+
+  # === EMBEDDED CONTEXT ADAPTATION ===
+  # Replace "Load {project_context}" with reference to embedded context
+  - pattern: '<action>Load [^<]*project.?context[^<]* for coding standards[^<]*</action>'
+    replacement: "<action>Use the project_context.md already embedded in the context section above for coding standards and project-wide patterns</action>"
+    flags: "IGNORECASE"
+
+  # === USER INTERACTION REMOVAL ===
+  # Remove <ask> blocks - automation has no user
+  - pattern: '\s*<ask>.*?</ask>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove <check if="user chooses..."> - no user choices
+  - pattern: '\s*<check if="user chooses[^"]*">.*?</check>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove invoke-workflow (handled by bmad-assist orchestration)
+  - pattern: '<invoke-workflow[^>]*>.*?</invoke-workflow>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # === GOTO/ANCHOR CLEANUP ===
+  # Remove <anchor> elements (self-closing and regular)
+  - pattern: '<anchor[^/]*/?>\s*'
+    replacement: ""
+    flags: ""
+
+  # Remove <goto> elements (with content between tags)
+  - pattern: '<goto[^>]*>.*?</goto>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove self-closing <goto /> elements
+  - pattern: '<goto[^/]*/>\s*'
+    replacement: ""
+    flags: ""
+
+  # === USER INTERACTION OUTPUTS ===
+  # Remove <output> blocks that present user choices
+  - pattern: '\s*<output>[^<]*(?:option|choose|would you like)[^<]*</output>\s*'
+    replacement: ""
+    flags: "IGNORECASE DOTALL"
+
+  # === STEP REMOVAL (deterministic, runs BEFORE tag attribute removal) ===
+  # Remove entire steps by number (steps 1, 2, 4, 9, 10)
+  # IMPORTANT: These must run BEFORE any tag attribute removal rules
+
+  # Step 1: file discovery - handled by compiler
+  - pattern: '<step n="1"[^>]*>.*?</step>'
+    replacement: "<!-- step 1 removed: file discovery handled by compiler -->"
+    flags: "DOTALL"
+
+  # Step 2: load project context - already embedded
+  - pattern: '<step n="2"[^>]*>.*?</step>'
+    replacement: "<!-- step 2 removed: context already embedded -->"
+    flags: "DOTALL"
+
+  # Step 4: mark story in-progress - managed by loop handler
+  - pattern: '<step n="4"[^>]*>.*?</step>'
+    replacement: "<!-- step 4 removed: status managed by loop handler -->"
+    flags: "DOTALL"
+
+  # Step 9: story completion with sprint-status ops - status managed by loop handler
+  - pattern: '<step n="9"[^>]*>.*?</step>'
+    replacement: "<!-- step 9 removed: status managed by loop handler -->"
+    flags: "DOTALL"
+
+  # Step 10: user communication - no interactive user
+  - pattern: '<step n="10"[^>]*>.*?</step>'
+    replacement: "<!-- step 10 removed: no interactive user -->"
+    flags: "DOTALL"
+
+  # === STEP RENUMBERING ===
+  # Remaining steps: 3, 5, 6, 7, 8 → renumber to 1, 2, 3, 4, 5
+  - pattern: '<step n="3"'
+    replacement: '<step n="1"'
+    flags: ""
+  - pattern: '<step n="5"'
+    replacement: '<step n="2"'
+    flags: ""
+  - pattern: '<step n="6"'
+    replacement: '<step n="3"'
+    flags: ""
+  - pattern: '<step n="7"'
+    replacement: '<step n="4"'
+    flags: ""
+  - pattern: '<step n="8"'
+    replacement: '<step n="5"'
+    flags: ""
+
+  # === SPRINT-STATUS CLEANUP (additional, after step removal) ===
+  # Remove tag="sprint-status" attribute from any remaining steps
+  - pattern: '\s+tag="sprint-status"'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # NOTE: defaults.yaml already handles:
+  # - sprint_status variable references
+  # - sprint-status.yaml file references
+  # - <check> blocks with sprint-status conditions
+  # - <action> tags with sprint-status operations
+
+  # NOTE: Do NOT add HALT removal regex - filtering.py handles this at lines 108-111
+  # HALT semantics are transformed to FAILURE CONDITIONS by LLM transforms
+
+  # === TEXTUAL CLEANUP (consistency with transformed semantics) ===
+  # Replace textual "HALT condition" references with "FAILURE CONDITION" for consistency
+  - pattern: 'HALT condition'
+    replacement: "FAILURE CONDITION"
+    flags: ""
+
+  # Remove "or the USER gives other instruction" - no interactive user in automation
+  - pattern: ' or the USER gives\s+other instruction'
+    replacement: ""
+    flags: ""
+
+validation:
+  must_contain:
+    - "<step"
+    - "<critical"
+    - "/[Ii]mplement/"
+    - "/[Tt]est/"
+    - "/red-green-refactor/"
+  must_not_contain:
+    - "{installed_path}"
+    - "<ask>"
+    - "user chooses"
+    - "<anchor"
+    - "<goto"
+    # NOTE: Do NOT check for HALT - filtering.py removes it, but FAILURE CONDITION remains
+    # NOTE: Do NOT check for {{placeholders}} - they exist in instructions and are valid

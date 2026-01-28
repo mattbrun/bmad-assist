@@ -118,7 +118,7 @@ def test_scorecard(
             cwd=project_path,
             capture_output=not verbose,
             text=True,
-            timeout=300,
+            timeout=600,  # 10 min - security scans can be slow
         )
 
         if result.returncode == 0:
@@ -136,7 +136,7 @@ def test_scorecard(
             raise typer.Exit(code=EXIT_ERROR)
 
     except subprocess.TimeoutExpired:
-        _error("Scorecard generation timed out after 5 minutes")
+        _error("Scorecard generation timed out after 10 minutes")
         raise typer.Exit(code=EXIT_ERROR) from None
 
     except FileNotFoundError:

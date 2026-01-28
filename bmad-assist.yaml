@@ -15,7 +15,7 @@ user_skill_level: expert
 # Per-phase timeout configuration (seconds)
 timeouts:
   default: 600
-  create_story: 900
+  create_story: 300
   dev_story: 3600
   code_review: 900
   code_review_synthesis: 900
@@ -95,8 +95,10 @@ providers:
 phase_models:
   # Single-LLM phases - object format
   create_story:
-    provider: claude-subprocess
-    model: opus
+    provider: opencode
+    model: zai-coding-plan/glm-4.7
+    # provider: claude-subprocess
+    # model: opus
   validate_story_synthesis:
     provider: claude-subprocess
     model: opus
@@ -120,44 +122,45 @@ phase_models:
   # When phase_models defines a multi-LLM phase, ONLY the listed providers are used.
   # Master is NOT auto-added - you have full control over the validator/reviewer list.
   validate_story:
-    - provider: gemini
-      model: gemini-3-pro-preview
-    - provider: gemini
-      model: gemini-3-flash-preview
-    - provider: gemini
-      model: gemini-2.5-flash
-    - provider: gemini
-      model: gemini-2.5-flash-lite
-    - provider: gemini
-      model: gemini-2.5-flash-lite
-    - provider: claude-subprocess
-      model: sonnet
-      model_name: glm-4.7
-      settings: ~/.claude/glm.json
-    - provider: claude-subprocess
-      model: sonnet
-      model_name: glm-4.7
-      settings: ~/.claude/glm.json
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
+    # - provider: gemini
+    #   model: gemini-3-flash-preview
+    # - provider: gemini
+    #   model: gemini-2.5-flash
+    # - provider: gemini
+    #   model: gemini-2.5-flash-lite
+    # - provider: gemini
+    #   model: gemini-2.5-flash-lite
+    - provider: opencode
+      model: zai-coding-plan/glm-4.7
+      # model_name: glm-4.7
+      # settings: ~/.claude/glm.json
+    # - provider: claude-subprocess
+    #   model: sonnet
+    #   model_name: glm-4.7
+    #   settings: ~/.claude/glm.json
+
   # Same for code_review - full control over reviewer list
   code_review:
-    - provider: gemini
-      model: gemini-3-pro-preview
-    - provider: gemini
-      model: gemini-3-flash-preview
-    - provider: gemini
-      model: gemini-2.5-flash
-    - provider: gemini
-      model: gemini-2.5-flash-lite
-    - provider: gemini
-      model: gemini-2.5-flash-lite
-    - provider: claude-subprocess
-      model: sonnet
-      model_name: glm-4.7
-      settings: ~/.claude/glm.json
-    - provider: claude-subprocess
-      model: sonnet
-      model_name: glm-4.7
-      settings: ~/.claude/glm.json
+    # - provider: gemini
+    #   model: gemini-3-pro-preview
+    # - provider: gemini
+    #   model: gemini-3-flash-preview
+    # - provider: gemini
+    #   model: gemini-2.5-flash
+    # - provider: gemini
+    #   model: gemini-2.5-flash-lite
+    # - provider: gemini
+    #   model: gemini-2.5-flash-lite
+    - provider: opencode
+      model: zai-coding-plan/glm-4.7
+    #   model_name: glm-4.7
+    #   settings: ~/.claude/glm.json
+    # - provider: claude-subprocess
+    #   model: sonnet
+    #   model_name: glm-4.7
+    #   settings: ~/.claude/glm.json
 
 
 # Compiler configuration

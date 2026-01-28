@@ -1,0 +1,106 @@
+# Common post-processing rules for all workflow patches
+# These are automatically applied to every patch unless overridden
+#
+# Rules are applied in order after LLM transforms.
+# Each patch can extend with workflow-specific rules in its own post_process section.
+
+post_process:
+  # === File path reference cleanup ===
+  # Remove references to files that are embedded in the compiled prompt
+
+  # Remove <var name="template"> - content is in <output-template>
+  - pattern: '^\s*<var\s+name="template"[^>]*>.*?</var>\s*$'
+    replacement: ""
+    flags: "MULTILINE DOTALL"
+
+  # Remove <var name="validation"> - checklist is separate workflow
+  - pattern: '^\s*<var\s+name="validation"[^>]*>.*?</var>\s*$'
+    replacement: ""
+    flags: "MULTILINE DOTALL"
+
+  # Remove installed_path line from workflow YAML
+  - pattern: '^installed_path:\s*"[^"]*"\s*$'
+    replacement: "# (paths removed - content embedded)"
+    flags: "MULTILINE"
+
+  # Remove template path line
+  - pattern: '^template:\s*"\{installed_path\}/template\.md"\s*$'
+    replacement: "# template: embedded in <output-template>"
+    flags: "MULTILINE"
+
+  # Remove instructions path line
+  - pattern: '^instructions:\s*"\{installed_path\}/instructions\.xml"\s*$'
+    replacement: "# instructions: embedded below"
+    flags: "MULTILINE"
+
+  # Remove validation path line
+  - pattern: '^validation:\s*"\{installed_path\}/checklist\.md"\s*$'
+    replacement: "# validation: separate validate workflow"
+    flags: "MULTILINE"
+
+  # Replace {installed_path}/workflow.yaml references
+  # Use escaped XML entities to avoid breaking XML parsing
+  - pattern: '\{installed_path\}/workflow\.yaml'
+    replacement: "the &lt;workflow-yaml&gt; section embedded above"
+    flags: "IGNORECASE"
+
+  # Replace {installed_path}/checklist.md references
+  - pattern: '\{installed_path\}/checklist\.md'
+    replacement: "(checklist is for validate workflow)"
+    flags: "IGNORECASE"
+
+  # Remove <invoke-task> for checklist validation
+  - pattern: '<invoke-task>[^<]*checklist[^<]*</invoke-task>'
+    replacement: "<!-- checklist validation is separate workflow -->"
+    flags: "IGNORECASE DOTALL"
+
+  # Replace <critical> about loading workflow.yaml
+  - pattern: '<critical>[^<]*\{installed_path\}/workflow\.yaml[^<]*</critical>'
+    replacement: "<critical>Workflow configuration is embedded in &lt;workflow-yaml&gt; above</critical>"
+    flags: "IGNORECASE DOTALL"
+
+  # Remove <critical> about workflow.xml execution engine (not needed - compiler handles this)
+  - pattern: '<critical>[^<]*workflow\.xml[^<]*</critical>\s*'
+    replacement: ""
+    flags: "IGNORECASE DOTALL"
+
+  # Replace "Initialize from template.md" instruction
+  - pattern: 'Initialize from template\.md:?\s*'
+    replacement: "Create file using the output-template format at: "
+    flags: "IGNORECASE"
+
+  # === Sprint status cleanup ===
+  # Remove sprint-status references (LLM often misses some in transforms)
+
+  # Remove entire steps with tag="sprint-status" attribute
+  # (Steps 1, 4, 9 in dev-story; varies by workflow)
+  - pattern: '<step[^>]*tag="sprint-status"[^>]*>.*?</step>'
+    replacement: "<!-- step removed: sprint-status managed by loop handler -->"
+    flags: "DOTALL IGNORECASE"
+
+  - pattern: '^\s*<check[^>]*sprint.?status[^>]*>.*?</check>\s*'
+    replacement: ""
+    flags: "MULTILINE DOTALL IGNORECASE"
+
+  - pattern: '<action>[^<]*sprint.?status[^<]*</action>'
+    replacement: "<!-- managed programmatically by bmad-assist -->"
+    flags: "IGNORECASE DOTALL"
+
+  # Only match sprint_status when used as a variable placeholder
+  - pattern: '\{\{sprint_status\}\}'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  - pattern: '\{sprint_status\}'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove sprint-status.yaml file references (leave as empty since it's managed programmatically)
+  - pattern: 'sprint-status\.yaml'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove <var name="sprint_status"> blocks entirely
+  - pattern: '^\s*<var\s+name="sprint_status"[^>]*>.*?</var>\s*$'
+    replacement: ""
+    flags: "MULTILINE DOTALL IGNORECASE"

@@ -163,10 +163,27 @@ def discover_patch(
         logger.debug("Found patch at global path: %s", global_patch)
         return global_patch
 
-    # No patch found
-    logger.warning(
-        "No patch found for %s, using original workflow",
+    # Check bmad-assist package directory (fallback for pip-installed patches)
+    package_patch = Path(__file__).parent.parent.parent / "default_patches" / patch_filename
+    if package_patch.exists() and package_patch.is_file():
+        logger.debug("Found patch at package path: %s", package_patch)
+        return package_patch
+
+    # No patch found - this is a critical issue as original workflows are minimal stubs
+    searched_paths = [
+        f"  - {project_root / DEFAULT_PATCH_DIR / patch_filename}",
+        f"  - {Path.home() / DEFAULT_PATCH_DIR / patch_filename}",
+        f"  - {package_patch}",
+    ]
+    if cwd is not None and cwd.resolve() != project_root.resolve():
+        searched_paths.insert(1, f"  - {cwd / DEFAULT_PATCH_DIR / patch_filename}")
+
+    logger.critical(
+        "NO PATCH FOUND FOR '%s' - workflow will use minimal BMAD stubs!\n"
+        "Searched paths:\n%s\n"
+        "To fix: copy patches to your project's .bmad-assist/patches/ or ~/.bmad-assist/patches/",
         workflow_name,
+        "\n".join(searched_paths),
     )
     return None
 

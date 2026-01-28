@@ -1,0 +1,145 @@
+patch:
+  name: "validate-story-optimizer"
+  version: "3.3.0"
+  author: "Pawel N"
+  description: "Optimizes validate-story workflow for bmad-assist Multi-LLM automation - removes interactive steps, produces validation report only"
+
+compatibility:
+  bmad_version: "6.0.0-alpha.22"
+  workflow: "validate-story"
+  # NOTE: This patch transforms the interactive Master-LLM workflow into a read-only Multi-LLM validator
+  # Workflow has 10 steps, patch reduces to 5 (removes file discovery + user interaction + file modification)
+
+git_intelligence:
+  enabled: true
+  embed_marker: "git-intelligence"
+  no_git_message: |
+    This project is not under git version control.
+    Do NOT attempt to run git commands - they will fail.
+    Focus on embedded context and file reading instead.
+  commands:
+    - name: "Recent Commits (last 5)"
+      command: "git log --oneline -5"
+    - name: "Story File History"
+      command: "git log --oneline -3 -- '**/{{epic_num}}-{{story_num}}-*.md' 2>/dev/null || echo '(no history)'"
+
+transforms:
+  # === STEP REMOVAL (handled by compiler) ===
+  # NEW workflow has 10 steps:
+  #   1. Load and understand the target story (file discovery)
+  #   2. Exhaustive source document re-analysis (file loading)
+  #   3. Story Quality Gate - INVEST validation (NEW in v2)
+  #   4. Disaster prevention gap analysis
+  #   5. LLM-Dev-Agent optimization analysis
+  #   6. Categorize and prioritize improvements
+  #   7. Initialize validation report
+  #   8. Present validation results and improvement suggestions (user interaction)
+  #   9. Apply selected improvements to story (file modification)
+  #   10. Finalize report and present results (user interaction)
+
+  - "Remove steps 1 and 2 completely - all file discovery and document loading is handled by the compiler which embeds story file, epic, architecture, PRD, and project context in the <context> section"
+  - "Remove steps 8, 9, and 10 completely - user interaction (asking for improvement choices) and file modification (applying improvements) are not part of validation phase; validator only produces a report that feeds into synthesis"
+  - "CRITICAL: KEEP step 3 (Story Quality Gate - INVEST validation) - this is essential! Do NOT remove it!"
+  - "Renumber remaining steps sequentially: step 3 becomes step 1 (INVEST validation), step 4 becomes step 2 (disaster prevention), step 5 becomes step 3 (LLM optimization), step 6 becomes step 4 (categorize), step 7 becomes step 5 (generate report)"
+
+  # === REFERENCE UPDATES ===
+  - "Replace all {installed_path} references with 'embedded context' - compiler pre-loads all needed files"
+  - "Replace the <critical> that says 'You MUST have already loaded and processed: {installed_path}/workflow.yaml' with: 'All configuration and context is available in the VARIABLES section below. Use these resolved values directly.'"
+
+  # === OUTPUT FILE PATH (REMOVED - orchestrator handles saving) ===
+  # NOTE: In Multi-LLM architecture, validators do NOT write files.
+  # The orchestrator captures stdout and saves reports with anonymized IDs.
+  - "Remove any references to default_output_file - validators output to stdout only"
+  - "Remove any instructions to create directories or write files"
+
+  # === SCOPE LIMITATION (READ-ONLY) ===
+  - "Add ONE CRITICAL instruction at workflow start (first element after <workflow>): 'SCOPE LIMITATION: You are a READ-ONLY VALIDATOR. Output your validation report to stdout ONLY. Do NOT create files, do NOT modify files, do NOT use Write/Edit/Bash tools. Your stdout output will be captured and saved by the orchestration system.'"
+
+  # === STEP 5 SIMPLIFICATION (stdout output only - was step 7 before renumbering) ===
+  - "In step 5 (Generate validation report - renumbered from original step 7), simplify to: (1) Use the output template as a FORMAT GUIDE, replacing all {{placeholders}} with your actual analysis, (2) output the complete report to stdout with all sections filled in, (3) do NOT save to any file - orchestrator handles persistence"
+
+  # === REPORT EXTRACTION MARKERS (critical for Multi-LLM) ===
+  - "Add a <critical> instruction in step 5 (Generate validation report) with EXACT text: 'OUTPUT MARKERS REQUIRED: Your validation report MUST start with the marker <!-- VALIDATION_REPORT_START --> on its own line BEFORE the report header, and MUST end with the marker <!-- VALIDATION_REPORT_END --> on its own line AFTER the final line. The orchestrator extracts ONLY content between these markers. Any text outside the markers (thinking, commentary) will be discarded.'"
+
+# Post-process rules extend defaults.yaml
+# NOTE: These run AFTER LLM transforms, on final .tpl.xml output
+post_process:
+  # === TEMPLATE INTERPRETATION INSTRUCTION ===
+  # Inject instruction BEFORE output-template to tell validator how to use it
+  # This is deterministic (regex) rather than relying on LLM transform
+  - pattern: '^(<output-template>)'
+    replacement: |
+      <critical>TEMPLATE USAGE: The template below shows the STRUCTURE and HEADINGS to follow. You MUST replace ALL {{variable}} placeholders with actual values from your analysis. You MUST expand {{#each X}} loops by listing actual items. NEVER output literal {{...}} syntax.</critical>
+      \1
+    flags: "MULTILINE"
+
+  # === REPORT EXTRACTION MARKERS ===
+  # Wrap output-template content with markers so LLM sees them in template
+  # These markers enable reliable extraction of validation report from LLM output
+  - pattern: '^<output-template>\n'
+    replacement: '<output-template>\n<!-- VALIDATION_REPORT_START -->\n'
+    flags: "MULTILINE"
+  - pattern: '\n</output-template>$'
+    replacement: '\n<!-- VALIDATION_REPORT_END -->\n</output-template>'
+    flags: "MULTILINE"
+
+  # Remove <ask> blocks - automation has no user
+  - pattern: '\s*<ask>.*?</ask>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove <check if="user chooses..."> - no user choices
+  - pattern: '\s*<check if="user chooses[^"]*">.*?</check>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove HALT instructions
+  - pattern: '<action>HALT[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove invoke-workflow (handled by bmad-assist orchestration)
+  - pattern: '<invoke-workflow[^>]*>.*?</invoke-workflow>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove template-output interactive markers
+  - pattern: '<template-output[^>]*>[^<]*</template-output>'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove default_output_file variable - validators output to stdout only
+  - pattern: '<var name="default_output_file"[^>]*>[^<]*</var>\s*'
+    replacement: ""
+    flags: "DOTALL"
+
+  # Remove action tags that save/initialize files
+  - pattern: '<action>[^<]*(?:Save|Initialize|save|initialize)[^<]*(?:default_output_file|report)[^<]*</action>'
+    replacement: ""
+    flags: "IGNORECASE"
+
+  # Remove file path references in output lines
+  - pattern: '\*\*Validation Report:\*\*[^\n]*default_output_file[^\n]*'
+    replacement: ""
+    flags: ""
+
+  # Replace {default_output_file} with stdout instruction
+  - pattern: '\{default_output_file\}'
+    replacement: "(stdout output)"
+    flags: ""
+
+  # NOTE: Do NOT add SCOPE LIMITATION here - it's added by LLM transform once
+
+validation:
+  must_contain:
+    - "<step"
+    - "<critical"
+    - "/[Rr]eport/"  # case-insensitive
+    - "/INVEST|invest/"  # INVEST validation preserved (either case)
+  must_not_contain:
+    - "{installed_path}"
+    - "HALT"
+    - "<ask>"
+    - "Your choice:"
+    # NOTE: Do NOT check for {{placeholders}} here - they SHOULD be in the
+    # template because the VALIDATOR fills them in later, not the PATCHER
