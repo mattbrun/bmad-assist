@@ -542,3 +542,54 @@ class TestEdgeCases:
         # Check without if attr defaults to technical (kept)
         assert "<check>" in filtered or "<check " in filtered
         assert "Action inside" in filtered
+
+
+class TestXmlCommentPreservation:
+    """Tests for XML comment preservation through filtering."""
+
+    def test_xml_comments_preserved(self) -> None:
+        """XML comments survive filtering and are restored correctly."""
+        xml = """<workflow>
+            <!-- Important comment -->
+            <action>Do something</action>
+            <!-- Another comment -->
+        </workflow>"""
+
+        workflow_ir = create_test_workflow_ir(xml)
+        filtered = filter_instructions(workflow_ir)
+
+        assert "<!-- Important comment -->" in filtered
+        assert "<!-- Another comment -->" in filtered
+
+    def test_comments_in_output_format_cdata_preserved(self) -> None:
+        """Comments inside CDATA (output-format) are restored as text markers.
+
+        When XML comments appear inside CDATA sections (e.g., METRICS_JSON markers),
+        they get escaped by ElementTree. The fix ensures escaped placeholders
+        are converted back to escaped comments, preserving the text appearance.
+        """
+        # This tests the _placeholders_to_comments fix for escaped placeholders
+        from bmad_assist.compiler.filtering import _placeholders_to_comments
+
+        # Simulate what happens: comment in CDATA gets escaped after ElementTree
+        escaped_placeholder = (
+            "&lt;__xml_comment__&gt; METRICS_JSON_START &lt;/__xml_comment__&gt;"
+        )
+        result = _placeholders_to_comments(escaped_placeholder)
+
+        # Should restore to escaped comment (preserves text in CDATA)
+        assert result == "&lt;!-- METRICS_JSON_START --&gt;"
+
+    def test_mixed_escaped_and_unescaped_placeholders(self) -> None:
+        """Both escaped and unescaped placeholders are handled correctly."""
+        from bmad_assist.compiler.filtering import _placeholders_to_comments
+
+        mixed = (
+            "<__xml_comment__> normal comment </__xml_comment__>"
+            "some text"
+            "&lt;__xml_comment__&gt; METRICS &lt;/__xml_comment__&gt;"
+        )
+        result = _placeholders_to_comments(mixed)
+
+        assert "<!-- normal comment -->" in result
+        assert "&lt;!-- METRICS --&gt;" in result

@@ -98,6 +98,9 @@ def _comments_to_placeholders(xml_str: str) -> str:
 def _placeholders_to_comments(xml_str: str) -> str:
     """Convert placeholder elements back to XML comments.
 
+    Handles both unescaped placeholders (normal XML context) and escaped
+    placeholders (inside CDATA sections where ElementTree escapes < and >).
+
     Args:
         xml_str: XML string with placeholder elements.
 
@@ -105,17 +108,32 @@ def _placeholders_to_comments(xml_str: str) -> str:
         XML string with placeholders replaced by comments.
 
     """
-    pattern = re.compile(
+    # Pattern for unescaped placeholders (normal XML context)
+    unescaped_pattern = re.compile(
         rf"<{_COMMENT_PLACEHOLDER_TAG}>(.*?)</{_COMMENT_PLACEHOLDER_TAG}>", re.DOTALL
     )
 
-    def restore_comment(match: re.Match[str]) -> str:
+    def restore_unescaped(match: re.Match[str]) -> str:
         content = match.group(1)
-        # Unescape XML special chars
+        # Unescape XML special chars in content
         unescaped = content.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&")
         return f"<!--{unescaped}-->"
 
-    return pattern.sub(restore_comment, xml_str)
+    result = unescaped_pattern.sub(restore_unescaped, xml_str)
+
+    # Pattern for escaped placeholders (inside CDATA, serialized as &lt;...&gt;)
+    escaped_pattern = re.compile(
+        rf"&lt;{_COMMENT_PLACEHOLDER_TAG}&gt;(.*?)&lt;/{_COMMENT_PLACEHOLDER_TAG}&gt;",
+        re.DOTALL,
+    )
+
+    def restore_escaped(match: re.Match[str]) -> str:
+        content = match.group(1)
+        # Content is already escaped, keep it that way for CDATA context
+        # Just wrap in escaped comment markers
+        return f"&lt;!--{content}--&gt;"
+
+    return escaped_pattern.sub(restore_escaped, result)
 
 
 def _is_user_condition(if_attr: str) -> bool:
