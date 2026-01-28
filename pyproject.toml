@@ -34,6 +34,7 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
     "types-PyYAML>=6.0.0",
+    "scipy-stubs>=1.14.0",
 ]
 
 [project.scripts]
@@ -58,6 +59,17 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 
+# External libraries without py.typed marker or stubs
+# These are legitimate third-party libs that don't ship type info
+[[tool.mypy.overrides]]
+module = [
+    "frontmatter",
+    "textstat",
+    "playwright.*",
+    "watchdog.*",
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -79,6 +91,33 @@ markers = [
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["src/bmad_assist"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    # Dead code - old modules replaced by subdirectory versions
+    # TODO: Delete these in separate branch (see docs/test-refactor/TEST-HEALTH.md)
+    "src/bmad_assist/output.py",
+    "src/bmad_assist/generator.py",
+    "src/bmad_assist/executor.py",
+    "src/bmad_assist/checker.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]
+show_missing = true
+skip_covered = false
+fail_under = 0
 
 [dependency-groups]
 dev = [

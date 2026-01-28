@@ -259,13 +259,13 @@ def parse_phase_models(raw: dict[str, object]) -> PhaseModelsConfig:
                     f"{type(value).__name__}"
                 )
             try:
-                config = MasterProviderConfig(**value)
+                single_config = MasterProviderConfig(**value)
             except Exception as e:
                 raise ConfigError(
                     f"Invalid config for phase '{phase_name}': {e}"
                 ) from e
-            _validate_settings_path(config.settings, phase_name)
-            result[phase_name] = config
+            _validate_settings_path(single_config.settings, phase_name)
+            result[phase_name] = single_config
 
         else:
             # Multi-LLM: expect list (array)
@@ -286,13 +286,13 @@ def parse_phase_models(raw: dict[str, object]) -> PhaseModelsConfig:
                         f"{type(item).__name__}"
                     )
                 try:
-                    config = MultiProviderConfig(**item)
+                    multi_config = MultiProviderConfig(**item)
                 except Exception as e:
                     raise ConfigError(
                         f"Invalid config for phase '{phase_name}' item {i}: {e}"
                     ) from e
-                _validate_settings_path(config.settings, f"{phase_name}[{i}]")
-                configs.append(config)
+                _validate_settings_path(multi_config.settings, f"{phase_name}[{i}]")
+                configs.append(multi_config)
             result[phase_name] = configs
 
     return result

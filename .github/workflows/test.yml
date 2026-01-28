@@ -26,8 +26,7 @@ jobs:
         run: pytest -q --tb=line --no-header tests/
 
       - name: Type check
-        # TODO: Fix type errors and add missing stubs
-        run: mypy src/ --ignore-missing-imports || true
+        run: mypy src/
 
       - name: Lint
         run: ruff check src/

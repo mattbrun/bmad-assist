@@ -478,7 +478,7 @@ def _calculate_significance(
         # Handle NaN p-value (occurs when both samples have zero variance)
         if math.isnan(p_value):
             return None, None
-        return float(p_value), p_value < SIGNIFICANCE_THRESHOLD
+        return float(p_value), bool(p_value < SIGNIFICANCE_THRESHOLD)
     except ImportError:
         logger.warning("scipy not installed, skipping significance testing")
         return None, None

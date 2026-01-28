@@ -1,7 +1,7 @@
 """Main Config model that aggregates all configuration sections."""
 
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -123,7 +123,7 @@ class Config(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def parse_raw_phase_models(cls, data: dict) -> dict:
+    def parse_raw_phase_models(cls, data: dict[str, Any]) -> dict[str, Any]:
         """Parse raw phase_models dict into typed config before Pydantic validation.
 
         Pydantic can't auto-discriminate dict vs list union types, so we need
