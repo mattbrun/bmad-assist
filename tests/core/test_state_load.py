@@ -13,6 +13,7 @@ Story 3.3 Tests cover:
 - AC10: StateError raised for IO/permission errors
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -380,6 +381,7 @@ class TestLoadStatePartialFile:
 class TestLoadStateIOErrors:
     """Test IO/permission error handling (AC10)."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_load_state_raises_state_error_for_permission_error(
         self, saved_state_file: tuple[Path, State]
     ) -> None:
@@ -398,6 +400,7 @@ class TestLoadStateIOErrors:
             # Restore permissions for cleanup
             path.chmod(0o644)
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_load_state_preserves_permission_error_cause(
         self, saved_state_file: tuple[Path, State]
     ) -> None:

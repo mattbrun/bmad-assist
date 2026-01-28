@@ -10,6 +10,7 @@ Tests cover:
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -483,6 +484,7 @@ class TestPartialSuccessHandling:
 class TestErrorHandlingAndLogging:
     """Test error handling and logging (AC #5)."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_report_save_failure_logs_warning(self, tmp_path: Path, caplog) -> None:
         """Test AC #5: Report save failure logs warning but doesn't crash."""
         # Create read-only directory to trigger write error
@@ -490,7 +492,6 @@ class TestErrorHandlingAndLogging:
         reviews_dir.mkdir(parents=True)
 
         # Make directory read-only
-        import os
         import stat
 
         original_mode = reviews_dir.stat().st_mode

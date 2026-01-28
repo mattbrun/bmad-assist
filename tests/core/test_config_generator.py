@@ -332,9 +332,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator.Prompt.ask")
     @patch("bmad_assist.core.config_generator.Confirm.ask")
     def test_config_validates_with_pydantic(
-        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path
+        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """AC5: Generated config validates with load_config_with_project."""
+        monkeypatch.chdir(tmp_path)
         mock_prompt.side_effect = ["claude", "opus_4"]
         mock_confirm.return_value = True
 
@@ -354,9 +355,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator.Prompt.ask")
     @patch("bmad_assist.core.config_generator.Confirm.ask")
     def test_config_with_codex_validates(
-        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path
+        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """AC5: Config with codex provider validates."""
+        monkeypatch.chdir(tmp_path)
         mock_prompt.side_effect = ["codex", "gpt-4o"]
         mock_confirm.return_value = True
 
@@ -371,9 +373,10 @@ class TestConfigGeneration:
     @patch("bmad_assist.core.config_generator.Prompt.ask")
     @patch("bmad_assist.core.config_generator.Confirm.ask")
     def test_config_with_gemini_validates(
-        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path
+        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """AC5: Config with gemini provider validates."""
+        monkeypatch.chdir(tmp_path)
         mock_prompt.side_effect = ["gemini", "gemini_2_5_pro"]
         mock_confirm.return_value = True
 
@@ -653,9 +656,10 @@ class TestEdgeCases:
     @patch("bmad_assist.core.config_generator.Prompt.ask")
     @patch("bmad_assist.core.config_generator.Confirm.ask")
     def test_different_model_selections(
-        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path
+        self, mock_confirm: MagicMock, mock_prompt: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Can select non-default model."""
+        monkeypatch.chdir(tmp_path)
         mock_prompt.side_effect = ["claude", "haiku_3_5"]
         mock_confirm.return_value = True
 

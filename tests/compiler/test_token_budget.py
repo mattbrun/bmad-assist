@@ -142,8 +142,9 @@ class TestValidateTokenBudget:
 class TestCliTokenBudget:
     """CLI integration tests for token budget validation."""
 
-    def test_max_tokens_flag_honored(self, tmp_path: Path) -> None:
+    def test_max_tokens_flag_honored(self, cli_isolated_env: Path) -> None:
         """Custom --max-tokens limit is used."""
+        tmp_path = cli_isolated_env
         # 15000 tokens > 10000 custom limit = should fail
         mock_result = _make_mock_result(token_estimate=15000)
 
@@ -167,8 +168,9 @@ class TestCliTokenBudget:
 
         assert result.exit_code == EXIT_TOKEN_BUDGET_ERROR
 
-    def test_exit_code_15_for_token_budget_error(self, tmp_path: Path) -> None:
+    def test_exit_code_15_for_token_budget_error(self, cli_isolated_env: Path) -> None:
         """TokenBudgetError maps to exit code 15."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=25000)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -190,8 +192,9 @@ class TestCliTokenBudget:
         assert result.exit_code == EXIT_TOKEN_BUDGET_ERROR
         assert result.exit_code == 15
 
-    def test_soft_limit_warning_success(self, tmp_path: Path) -> None:
+    def test_soft_limit_warning_success(self, cli_isolated_env: Path) -> None:
         """Soft limit warning displayed but compilation succeeds."""
+        tmp_path = cli_isolated_env
         # 17000 tokens: over soft (15k) but under hard (20k)
         mock_result = _make_mock_result(token_estimate=17000)
 
@@ -215,8 +218,9 @@ class TestCliTokenBudget:
         assert "Warning" in result.output
         assert "17,000" in result.output
 
-    def test_max_tokens_zero_disables_validation(self, tmp_path: Path) -> None:
+    def test_max_tokens_zero_disables_validation(self, cli_isolated_env: Path) -> None:
         """--max-tokens 0 disables validation entirely."""
+        tmp_path = cli_isolated_env
         # Even huge token count should pass
         mock_result = _make_mock_result(token_estimate=100000)
 
@@ -240,8 +244,9 @@ class TestCliTokenBudget:
 
         assert result.exit_code == EXIT_SUCCESS
 
-    def test_dry_run_hard_limit_no_stdout(self, tmp_path: Path) -> None:
+    def test_dry_run_hard_limit_no_stdout(self, cli_isolated_env: Path) -> None:
         """Dry-run with hard limit exceeded: no XML to stdout."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=25000)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -265,8 +270,9 @@ class TestCliTokenBudget:
         # stdout should NOT contain the XML content (error prevented output)
         assert "<test/>" not in result.output
 
-    def test_dry_run_soft_warning_continues(self, tmp_path: Path) -> None:
+    def test_dry_run_soft_warning_continues(self, cli_isolated_env: Path) -> None:
         """Dry-run with soft limit warning still produces XML output."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=17000)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -290,8 +296,9 @@ class TestCliTokenBudget:
         # XML should still be in output (dry-run prints to stdout)
         assert "<test/>" in result.output
 
-    def test_error_message_includes_token_count(self, tmp_path: Path) -> None:
+    def test_error_message_includes_token_count(self, cli_isolated_env: Path) -> None:
         """Error message includes current token count."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=24512)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -322,8 +329,9 @@ class TestCliTokenBudget:
         # Help text includes info about disabling
         assert "disable" in result.output.lower()
 
-    def test_negative_max_tokens_rejected(self, tmp_path: Path) -> None:
+    def test_negative_max_tokens_rejected(self, cli_isolated_env: Path) -> None:
         """Negative --max-tokens value is rejected with exit code 2."""
+        tmp_path = cli_isolated_env
         from bmad_assist.cli import EXIT_CONFIG_ERROR
 
         result = runner.invoke(
@@ -346,8 +354,9 @@ class TestCliTokenBudget:
         assert result.exit_code == EXIT_CONFIG_ERROR
         assert "--max-tokens must be >= 0" in result.output
 
-    def test_no_file_written_on_hard_limit_error(self, tmp_path: Path) -> None:
+    def test_no_file_written_on_hard_limit_error(self, cli_isolated_env: Path) -> None:
         """No output file written when hard limit exceeded."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=25000)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -370,8 +379,9 @@ class TestCliTokenBudget:
         output_file = tmp_path / "compiled-prompts" / "create-story-1-1.xml"
         assert not output_file.exists()
 
-    def test_file_written_on_soft_limit_warning(self, tmp_path: Path) -> None:
+    def test_file_written_on_soft_limit_warning(self, cli_isolated_env: Path) -> None:
         """Output file still written when only soft limit exceeded."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result(token_estimate=17000)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):

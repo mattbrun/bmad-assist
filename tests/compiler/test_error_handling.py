@@ -11,6 +11,7 @@ Tests for Story 10.8 - Fail-Fast Error Handling:
 - AC8: No partial output on error
 """
 
+import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
@@ -603,6 +604,7 @@ class TestErrorMessageDeterminism:
 class TestEdgeCases:
     """Tests for edge cases in error handling."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_permission_denied_raises_error(self, tmp_path: Path) -> None:
         """Permission denied on file raises appropriate error."""
         # This test is platform-specific, skip if permissions can't be set

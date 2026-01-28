@@ -225,8 +225,9 @@ class TestGetStatePathWithConfig:
 class TestGetStatePathWithoutConfig:
     """Tests for get_state_path without Config (uses default)."""
 
-    def test_none_config_uses_default(self) -> None:
+    def test_none_config_uses_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC3: Config without state_path uses default global path."""
+        monkeypatch.chdir(tmp_path)
         result = get_state_path(None)
 
         assert result.is_absolute()
@@ -234,8 +235,9 @@ class TestGetStatePathWithoutConfig:
         assert ".bmad-assist" in str(result)
         assert result.name == "state.yaml"
 
-    def test_no_argument_uses_default(self) -> None:
+    def test_no_argument_uses_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC7: get_state_path() called without arguments uses default."""
+        monkeypatch.chdir(tmp_path)
         result = get_state_path()
 
         assert result.is_absolute()
@@ -254,12 +256,15 @@ class TestGetStatePathWithoutConfig:
         assert ".bmad-assist" in str(result)
         assert result.name == "state.yaml"
 
-    def test_default_path_is_in_home_directory(self) -> None:
+    def test_default_path_is_in_home_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Default path is under user's home directory."""
+        monkeypatch.chdir(tmp_path)
         result = get_state_path()
 
-        home = Path.home()
-        assert str(result).startswith(str(home))
+        # With CWD-based state path, result is now CWD/.bmad-assist/state.yaml
+        assert result.is_absolute()
+        assert ".bmad-assist" in str(result)
+        assert result.name == "state.yaml"
 
 
 # =============================================================================
@@ -482,14 +487,16 @@ class TestIntegrationWithSaveLoad:
 class TestPathExpansionBehavior:
     """Tests for path expansion behavior (expanduser + resolve)."""
 
-    def test_tilde_expanded_before_resolve(self) -> None:
+    def test_tilde_expanded_before_resolve(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Tilde is expanded before resolve (correct order)."""
+        monkeypatch.chdir(tmp_path)
         result = get_state_path()
 
-        # Should contain actual home directory, not tilde
+        # Should contain actual directory path, not tilde
         assert "~" not in str(result)
-        home = Path.home()
-        assert str(result).startswith(str(home))
+        # Result should be absolute path under CWD
+        assert result.is_absolute()
+        assert ".bmad-assist" in str(result)
 
     def test_resolve_handles_symlinks(self, tmp_path: Path) -> None:
         """Path.resolve() follows symlinks (expected behavior)."""

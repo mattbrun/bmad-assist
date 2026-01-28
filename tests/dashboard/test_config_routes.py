@@ -24,6 +24,12 @@ from starlette.testclient import TestClient
 from bmad_assist.core.config import Config
 
 
+@pytest.fixture(autouse=True)
+def isolate_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Isolate tests from real bmad-assist.yaml in project root."""
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def mock_server():
     """Create a mock DashboardServer."""
@@ -458,9 +464,14 @@ class TestPostConfigRestore:
 
     def test_restores_backup_successfully(self, client, mock_config_editor):
         """Test that backup restore succeeds."""
-        with patch(
-            "bmad_assist.dashboard.routes.config.utils._create_config_editor",
-            return_value=mock_config_editor,
+        with (
+            patch(
+                "bmad_assist.dashboard.routes.config.utils._create_config_editor",
+                return_value=mock_config_editor,
+            ),
+            patch(
+                "bmad_assist.dashboard.routes.config.backup.reload_config",
+            ),
         ):
             response = client.post(
                 "/api/config/restore",

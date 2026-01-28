@@ -20,6 +20,46 @@ def reset_paths_singleton():
     _reset_paths()
 
 
+@pytest.fixture(autouse=True)
+def reset_and_load_minimal_config(request):
+    """Reset config singleton and load minimal config for tests.
+
+    This fixture:
+    1. Resets config singleton before test
+    2. Loads minimal valid config (unless marked with @pytest.mark.no_auto_config)
+    3. Resets config singleton after test
+
+    Tests that need NO config (e.g., testing config loading itself) can use:
+        @pytest.mark.no_auto_config
+    """
+    from bmad_assist.core.config import _reset_config, load_config
+
+    # Reset before test
+    _reset_config()
+
+    # Load minimal config unless explicitly disabled
+    if not request.node.get_closest_marker("no_auto_config"):
+        # Minimal valid config
+        minimal_config = {
+            "providers": {
+                "master": {
+                    "provider": "claude",
+                    "model": "opus",
+                }
+            }
+        }
+        try:
+            load_config(minimal_config)
+        except Exception:
+            # Config already loaded or other issue - that's ok
+            pass
+
+    yield
+
+    # Reset after test
+    _reset_config()
+
+
 @pytest.fixture
 def init_test_paths(tmp_path):
     """Initialize paths singleton for a test with temp directory.
@@ -35,6 +75,33 @@ def init_test_paths(tmp_path):
     paths = init_paths(tmp_path)
     paths.ensure_directories()
     return paths
+
+
+@pytest.fixture
+def cli_isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Create isolated environment for CLI tests with minimal config.
+
+    This fixture:
+    1. Changes CWD to tmp_path (isolates from real bmad-assist.yaml)
+    2. Creates minimal bmad-assist.yaml in tmp_path
+    3. Returns tmp_path for test use
+
+    Usage:
+        def test_cli_command(cli_isolated_env):
+            result = runner.invoke(app, ["compile", ...])
+            # Uses config from cli_isolated_env (tmp_path)
+    """
+    monkeypatch.chdir(tmp_path)
+
+    # Create minimal config file
+    config_content = """\
+providers:
+  master:
+    provider: claude
+    model: opus
+"""
+    (tmp_path / "bmad-assist.yaml").write_text(config_content)
+    return tmp_path
 
 
 @pytest.fixture(autouse=True)

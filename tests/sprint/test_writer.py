@@ -312,6 +312,7 @@ class TestAtomicWrite:
 class TestWriteErrorHandling:
     """Tests for graceful error handling with StateError."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_write_raises_state_error_on_permission_denied(
         self,
         sample_status: SprintStatus,

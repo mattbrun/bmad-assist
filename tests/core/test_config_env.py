@@ -330,8 +330,9 @@ class TestEnvAvailableOsGetenv:
 class TestEnvIntegrationWithConfig:
     """Tests for AC9: .env integration with config loading."""
 
-    def test_env_loaded_before_config(self, tmp_path: Path) -> None:
+    def test_env_loaded_before_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC9: .env is loaded before config validation."""
+        monkeypatch.chdir(tmp_path)
         # Create valid global config
         global_config = tmp_path / "global.yaml"
         global_config.write_text(
@@ -364,8 +365,9 @@ providers:
         # Cleanup
         os.environ.pop("CONFIG_INTEGRATION_TEST", None)
 
-    def test_env_loaded_even_if_project_config_missing(self, tmp_path: Path) -> None:
+    def test_env_loaded_even_if_project_config_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """AC9: .env is loaded even when bmad-assist.yaml doesn't exist."""
+        monkeypatch.chdir(tmp_path)
         # Create valid global config
         global_config = tmp_path / "global.yaml"
         global_config.write_text(

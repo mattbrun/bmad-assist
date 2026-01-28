@@ -221,6 +221,7 @@ class TestTemplateCache:
         temp_files = list(cache_dir.glob("*.tmp"))
         assert len(temp_files) == 0
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_save_permission_error(self, tmp_path: Path) -> None:
         """Test that save raises PatchError on permission error."""
         cache = TemplateCache()

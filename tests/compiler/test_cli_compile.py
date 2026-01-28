@@ -161,8 +161,9 @@ class TestCompileHelpOutput:
 class TestEpicStoryValidation:
     """Tests for epic/story number validation."""
 
-    def test_negative_epic_number_fails(self, tmp_path: Path) -> None:
+    def test_negative_epic_number_fails(self, cli_isolated_env: Path) -> None:
         """Negative epic number returns exit code 2 (config error)."""
+        tmp_path = cli_isolated_env
         result = runner.invoke(
             app,
             ["compile", "-w", "create-story", "-e", "-1", "-s", "1", "-p", str(tmp_path)],
@@ -170,8 +171,9 @@ class TestEpicStoryValidation:
         assert result.exit_code == EXIT_CONFIG_ERROR
         assert "positive integer" in result.output.lower()
 
-    def test_zero_epic_number_fails(self, tmp_path: Path) -> None:
+    def test_zero_epic_number_fails(self, cli_isolated_env: Path) -> None:
         """Zero epic number returns exit code 2 (config error)."""
+        tmp_path = cli_isolated_env
         result = runner.invoke(
             app,
             ["compile", "-w", "create-story", "-e", "0", "-s", "1", "-p", str(tmp_path)],
@@ -179,8 +181,9 @@ class TestEpicStoryValidation:
         assert result.exit_code == EXIT_CONFIG_ERROR
         assert "positive integer" in result.output.lower()
 
-    def test_negative_story_number_fails(self, tmp_path: Path) -> None:
+    def test_negative_story_number_fails(self, cli_isolated_env: Path) -> None:
         """Negative story number returns exit code 2 (config error)."""
+        tmp_path = cli_isolated_env
         result = runner.invoke(
             app,
             ["compile", "-w", "create-story", "-e", "1", "-s", "-5", "-p", str(tmp_path)],
@@ -188,8 +191,9 @@ class TestEpicStoryValidation:
         assert result.exit_code == EXIT_CONFIG_ERROR
         assert "positive integer" in result.output.lower()
 
-    def test_zero_story_number_fails(self, tmp_path: Path) -> None:
+    def test_zero_story_number_fails(self, cli_isolated_env: Path) -> None:
         """Zero story number returns exit code 2 (config error)."""
+        tmp_path = cli_isolated_env
         result = runner.invoke(
             app,
             ["compile", "-w", "create-story", "-e", "1", "-s", "0", "-p", str(tmp_path)],
@@ -243,8 +247,9 @@ class TestMissingRequiredArguments:
 class TestBasicCompilation:
     """Tests for basic compilation functionality (AC1)."""
 
-    def test_compile_creates_output_file(self, tmp_path: Path) -> None:
+    def test_compile_creates_output_file(self, cli_isolated_env: Path) -> None:
         """AC1: Successful compilation creates output file."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result("<compiled-workflow></compiled-workflow>", 100)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -258,8 +263,9 @@ class TestBasicCompilation:
         assert output_path.exists()
         assert "<compiled-workflow>" in output_path.read_text()
 
-    def test_compile_shows_success_message(self, tmp_path: Path) -> None:
+    def test_compile_shows_success_message(self, cli_isolated_env: Path) -> None:
         """AC1: Success message shows output path and token count."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result("<compiled-workflow></compiled-workflow>", 8234)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -282,8 +288,9 @@ class TestBasicCompilation:
 class TestCustomOutputPath:
     """Tests for custom output path functionality (AC2)."""
 
-    def test_compile_custom_output_path(self, tmp_path: Path) -> None:
+    def test_compile_custom_output_path(self, cli_isolated_env: Path) -> None:
         """AC2: Custom --output path is respected."""
+        tmp_path = cli_isolated_env
         custom_output = tmp_path / "custom" / "my-prompt.xml"
         mock_result = _make_mock_result("<compiled-workflow></compiled-workflow>", 100)
 
@@ -311,8 +318,9 @@ class TestCustomOutputPath:
         output_no_newlines = result.output.replace("\n", "")
         assert "my-prompt.xml" in output_no_newlines
 
-    def test_compile_creates_parent_directories(self, tmp_path: Path) -> None:
+    def test_compile_creates_parent_directories(self, cli_isolated_env: Path) -> None:
         """AC2: Parent directories are created if they don't exist."""
+        tmp_path = cli_isolated_env
         # Deep nested path that doesn't exist
         custom_output = tmp_path / "deep" / "nested" / "path" / "output.xml"
         mock_result = _make_mock_result("<compiled-workflow></compiled-workflow>", 100)
@@ -347,8 +355,9 @@ class TestCustomOutputPath:
 class TestDryRunMode:
     """Tests for dry-run mode functionality (AC3)."""
 
-    def test_compile_dry_run_prints_xml_to_stdout(self, tmp_path: Path) -> None:
+    def test_compile_dry_run_prints_xml_to_stdout(self, cli_isolated_env: Path) -> None:
         """AC3: Dry-run prints XML to stdout, not file."""
+        tmp_path = cli_isolated_env
         xml_content = "<compiled-workflow><test>content</test></compiled-workflow>"
         mock_result = _make_mock_result(xml_content, 100)
 
@@ -375,8 +384,9 @@ class TestDryRunMode:
         default_path = tmp_path / "compiled-prompts" / "create-story-10-9.xml"
         assert not default_path.exists()
 
-    def test_compile_dry_run_no_file_created(self, tmp_path: Path) -> None:
+    def test_compile_dry_run_no_file_created(self, cli_isolated_env: Path) -> None:
         """AC3: Dry-run does not create output file."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result("<test></test>", 50)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):
@@ -409,8 +419,9 @@ class TestDryRunMode:
 class TestProjectPathOverride:
     """Tests for project path override functionality (AC4)."""
 
-    def test_compile_project_path_used(self, tmp_path: Path) -> None:
+    def test_compile_project_path_used(self, cli_isolated_env: Path) -> None:
         """AC4: Project path override is used for compilation."""
+        tmp_path = cli_isolated_env
         project_dir = tmp_path / "my-project"
         project_dir.mkdir()
 
@@ -438,8 +449,9 @@ class TestProjectPathOverride:
         context = call_args[0][1]
         assert context.project_root == project_dir
 
-    def test_compile_nonexistent_project_path_exits_error(self, tmp_path: Path) -> None:
+    def test_compile_nonexistent_project_path_exits_error(self, cli_isolated_env: Path) -> None:
         """AC4: Nonexistent project path returns exit code 1."""
+        tmp_path = cli_isolated_env
         nonexistent = tmp_path / "nonexistent"
 
         result = runner.invoke(
@@ -483,9 +495,10 @@ class TestExitCodeMapping:
         self,
         error_class: type[Exception],
         exit_code: int,
-        tmp_path: Path,
+        cli_isolated_env: Path,
     ) -> None:
         """AC5: Each exception type maps to correct exit code (codes 10-14)."""
+        tmp_path = cli_isolated_env
 
         def mock_compile(*args, **kwargs):
             raise error_class("Test error")
@@ -517,8 +530,9 @@ class TestExitCodeMapping:
 class TestErrorMessageDisplay:
     """Tests for error message display (AC6)."""
 
-    def test_error_message_shows_red_error(self, tmp_path: Path) -> None:
+    def test_error_message_shows_red_error(self, cli_isolated_env: Path) -> None:
         """AC6: Error messages show with Error: prefix."""
+        tmp_path = cli_isolated_env
 
         def mock_compile(*args, **kwargs):
             raise CompilerError("Test error message")
@@ -542,8 +556,9 @@ class TestErrorMessageDisplay:
         assert "Error:" in result.output
         assert "Test error message" in result.output
 
-    def test_error_message_preserves_multiline(self, tmp_path: Path) -> None:
+    def test_error_message_preserves_multiline(self, cli_isolated_env: Path) -> None:
         """AC6: Multiline error messages preserve Why/How format."""
+        tmp_path = cli_isolated_env
         error_msg = (
             "project_context.md not found: /path/to/file\n"
             "  Why it's needed: Critical for AI agents\n"
@@ -572,8 +587,9 @@ class TestErrorMessageDisplay:
         assert "Why it's needed:" in result.output
         assert "How to fix:" in result.output
 
-    def test_verbose_mode_shows_traceback(self, tmp_path: Path) -> None:
+    def test_verbose_mode_shows_traceback(self, cli_isolated_env: Path) -> None:
         """AC6: Verbose mode shows full traceback on error."""
+        tmp_path = cli_isolated_env
 
         def mock_compile(*args, **kwargs):
             raise CompilerError("Test error")
@@ -608,8 +624,9 @@ class TestErrorMessageDisplay:
 class TestOutputDirectoryCreation:
     """Tests for output directory creation (AC8)."""
 
-    def test_creates_compiled_prompts_directory(self, tmp_path: Path) -> None:
+    def test_creates_compiled_prompts_directory(self, cli_isolated_env: Path) -> None:
         """AC8: compiled-prompts/ directory is created automatically."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result("<test></test>", 50)
 
         # Ensure directory doesn't exist
@@ -645,8 +662,9 @@ class TestOutputDirectoryCreation:
 class TestAtomicWriteAndOverwrite:
     """Tests for output file overwrite and atomic write (AC9)."""
 
-    def test_overwrites_existing_file(self, tmp_path: Path) -> None:
+    def test_overwrites_existing_file(self, cli_isolated_env: Path) -> None:
         """AC9: Existing file is overwritten silently."""
+        tmp_path = cli_isolated_env
         # Create existing file
         compiled_prompts = tmp_path / "compiled-prompts"
         compiled_prompts.mkdir()
@@ -674,8 +692,9 @@ class TestAtomicWriteAndOverwrite:
         assert result.exit_code == EXIT_SUCCESS
         assert output_file.read_text() == "<new>content</new>"
 
-    def test_atomic_write_no_partial_on_error(self, tmp_path: Path) -> None:
+    def test_atomic_write_no_partial_on_error(self, cli_isolated_env: Path) -> None:
         """AC9: No partial output is written if compilation fails mid-write."""
+        tmp_path = cli_isolated_env
         compiled_prompts = tmp_path / "compiled-prompts"
         compiled_prompts.mkdir()
         output_file = compiled_prompts / "create-story-1-1.xml"
@@ -722,16 +741,14 @@ class TestRelativeOutputPathResolution:
 
     def test_relative_output_resolved_to_cwd(
         self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
+        cli_isolated_env: Path,
     ) -> None:
         """AC10: Relative --output path resolved against CWD, not --project."""
+        tmp_path = cli_isolated_env
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        cwd = tmp_path / "cwd"
-        cwd.mkdir()
-
-        monkeypatch.chdir(cwd)
+        # CWD is already set to tmp_path by cli_isolated_env
+        cwd = tmp_path
 
         mock_result = _make_mock_result("<test></test>", 50)
 
@@ -758,8 +775,9 @@ class TestRelativeOutputPathResolution:
         assert (cwd / "output.xml").exists()
         assert not (project_dir / "output.xml").exists()
 
-    def test_absolute_output_path_honored(self, tmp_path: Path) -> None:
+    def test_absolute_output_path_honored(self, cli_isolated_env: Path) -> None:
         """AC10: Absolute output path is used as-is."""
+        tmp_path = cli_isolated_env
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         absolute_output = tmp_path / "absolute" / "output.xml"
@@ -796,8 +814,9 @@ class TestRelativeOutputPathResolution:
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
 
-    def test_invalid_workflow_name_returns_compiler_error(self, tmp_path: Path) -> None:
+    def test_invalid_workflow_name_returns_compiler_error(self, cli_isolated_env: Path) -> None:
         """Invalid workflow name returns exit code 13 (CompilerError)."""
+        tmp_path = cli_isolated_env
 
         def mock_compile(*args, **kwargs):
             raise CompilerError("Unknown workflow: invalid-workflow")
@@ -820,8 +839,9 @@ class TestEdgeCases:
 
         assert result.exit_code == EXIT_COMPILER_ERROR
 
-    def test_large_output_not_truncated(self, tmp_path: Path) -> None:
+    def test_large_output_not_truncated(self, cli_isolated_env: Path) -> None:
         """Large output is not truncated."""
+        tmp_path = cli_isolated_env
         # Generate large XML content (> 100KB)
         large_content = "<compiled-workflow>" + ("x" * 200_000) + "</compiled-workflow>"
         mock_result = _make_mock_result(large_content, 50000)
@@ -848,8 +868,9 @@ class TestEdgeCases:
         output_file = tmp_path / "compiled-prompts" / "create-story-1-1.xml"
         assert len(output_file.read_text()) == len(large_content)
 
-    def test_default_output_path_formula(self, tmp_path: Path) -> None:
+    def test_default_output_path_formula(self, cli_isolated_env: Path) -> None:
         """Default path follows formula: {project}/compiled-prompts/{workflow}-{e}-{s}.xml."""
+        tmp_path = cli_isolated_env
         mock_result = _make_mock_result("<test></test>", 50)
 
         with patch(COMPILE_WORKFLOW_PATCH, return_value=mock_result):

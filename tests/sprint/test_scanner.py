@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -673,6 +674,7 @@ class TestArtifactIndexRepr:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_permission_error_handled(self, tmp_path: Path) -> None:
         """Test that permission errors are handled gracefully."""
         stories_dir = tmp_path / "stories"

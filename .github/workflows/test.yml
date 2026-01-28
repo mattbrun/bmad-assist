@@ -23,29 +23,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        # TODO: Fix tests that depend on local config (bmad-assist.yaml, ~/.bmad-assist/)
-        # Tracked in test-refactor worktree - remove ignores after proper mocking
-        run: |
-          pytest -q --tb=line --no-header tests/ \
-            --ignore=tests/compiler/test_cli_compile.py \
-            --ignore=tests/compiler/test_core.py \
-            --ignore=tests/compiler/test_create_story.py \
-            --ignore=tests/compiler/test_dev_story.py \
-            --ignore=tests/compiler/test_token_budget.py \
-            --ignore=tests/compiler/patching/test_cli.py \
-            --ignore=tests/compiler/workflows/test_code_review.py \
-            --ignore=tests/compiler/workflows/test_code_review_synthesis.py \
-            --ignore=tests/compiler/workflows/test_synthesis_edit_guidance.py \
-            --ignore=tests/core/test_config_editor.py \
-            --ignore=tests/core/test_config_env.py \
-            --ignore=tests/core/test_config_generator.py \
-            --ignore=tests/core/test_state_location.py \
-            --ignore=tests/dashboard/test_config_routes.py \
-            --ignore=tests/dashboard/test_cli_serve.py \
-            --ignore=tests/benchmarking/test_reports.py \
-            --ignore=tests/test_cli.py \
-            --ignore=tests/test_cli_sprint.py \
-            --ignore=experiments
+        run: pytest -q --tb=line --no-header tests/
 
       - name: Type check
         # TODO: Fix type errors and add missing stubs

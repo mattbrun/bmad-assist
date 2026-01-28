@@ -741,8 +741,11 @@ providers:
 
         assert result.exit_code == EXIT_SUCCESS
 
-    def test_no_interactive_with_project_config_succeeds(self, tmp_path: Path) -> None:
+    def test_no_interactive_with_project_config_succeeds(self, tmp_path: Path, monkeypatch) -> None:
         """AC7: --no-interactive with project config proceeds normally."""
+        # Isolate from real bmad-assist.yaml in project root
+        monkeypatch.chdir(tmp_path)
+
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 
@@ -833,8 +836,12 @@ class TestWizardIntegration:
         mock_wizard: MagicMock,
         mock_load_epic_data: MagicMock,
         tmp_path: Path,
+        monkeypatch,
     ) -> None:
         """AC1: Missing config triggers interactive questionnaire."""
+        # Isolate from real bmad-assist.yaml in project root
+        monkeypatch.chdir(tmp_path)
+
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 
@@ -963,8 +970,11 @@ class TestRunStartPointParameters:
         result = runner.invoke(app, ["run", "-e", "22", "-s", "3", "--help"])
         assert result.exit_code == 0
 
-    def test_story_without_epic_exits_with_error(self, tmp_path: Path) -> None:
+    def test_story_without_epic_exits_with_error(self, tmp_path: Path, monkeypatch) -> None:
         """--story without --epic exits with EXIT_CONFIG_ERROR."""
+        # Isolate from real bmad-assist.yaml in project root
+        monkeypatch.chdir(tmp_path)
+
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 

@@ -1,5 +1,7 @@
 """Tests for bmad_assist.core.paths module."""
 
+import os
+
 import pytest
 from pathlib import Path
 
@@ -443,6 +445,7 @@ class TestLegacySprintArtifacts:
 class TestEnsureDirectoriesPermissions:
     """Tests for ensure_directories() permission handling."""
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_ensure_directories_permission_error_message(self, project_root: Path, tmp_path: Path):
         """Permission error includes helpful message for external paths."""
         project_root.mkdir(parents=True)

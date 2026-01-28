@@ -4,6 +4,7 @@ Tests cover all acceptance criteria for Story 2.5 - State Discrepancy Correction
 """
 
 import logging
+import os
 from pathlib import Path
 
 import frontmatter  # type: ignore[import-untyped]
@@ -524,6 +525,7 @@ class TestCorrectDiscrepancyErrors:
         assert result.action == CorrectionAction.NO_CHANGE_NEEDED
         assert "requires user confirmation" in result.details
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_ac13_error_on_write_failure(self, tmp_path: Path) -> None:
         """AC13: File write failure returns ERROR result."""
         # Create read-only directory

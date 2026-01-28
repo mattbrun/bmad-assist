@@ -21,9 +21,10 @@ class TestPatchCompileCommand:
         assert result.exit_code != 0
         assert "workflow" in result.output.lower() or "missing" in result.output.lower()
 
-    def test_compile_success(self, tmp_path: Path) -> None:
+    def test_compile_success(self, cli_isolated_env: Path) -> None:
         """Test successful patch compilation."""
         # Create minimal project structure
+        tmp_path = cli_isolated_env
         project = tmp_path / "project"
         project.mkdir()
 
@@ -59,8 +60,9 @@ transforms:
             assert result.exit_code == 0
             assert "Compiled" in result.output
 
-    def test_compile_with_warnings(self, tmp_path: Path) -> None:
+    def test_compile_with_warnings(self, cli_isolated_env: Path) -> None:
         """Test compilation with transform warnings."""
+        tmp_path = cli_isolated_env
         project = tmp_path / "project"
         project.mkdir()
 
@@ -80,10 +82,11 @@ transforms:
             assert "warnings" in result.output.lower()
             assert "2" in result.output
 
-    def test_compile_patch_error(self, tmp_path: Path) -> None:
+    def test_compile_patch_error(self, cli_isolated_env: Path) -> None:
         """Test compilation failure with PatchError."""
         from bmad_assist.core.exceptions import PatchError
 
+        tmp_path = cli_isolated_env
         project = tmp_path / "project"
         project.mkdir()
 
@@ -98,10 +101,11 @@ transforms:
             assert result.exit_code == 16  # EXIT_PATCH_ERROR
             assert "error" in result.output.lower()
 
-    def test_compile_validation_error(self, tmp_path: Path) -> None:
+    def test_compile_validation_error(self, cli_isolated_env: Path) -> None:
         """Test compilation failure with validation error."""
         from bmad_assist.core.exceptions import PatchError
 
+        tmp_path = cli_isolated_env
         project = tmp_path / "project"
         project.mkdir()
 
@@ -118,8 +122,9 @@ transforms:
 
             assert result.exit_code == 17  # EXIT_PATCH_VALIDATION_ERROR
 
-    def test_compile_debug_mode(self, tmp_path: Path) -> None:
+    def test_compile_debug_mode(self, cli_isolated_env: Path) -> None:
         """Test compilation with --debug flag."""
+        tmp_path = cli_isolated_env
         project = tmp_path / "project"
         project.mkdir()
 

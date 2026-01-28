@@ -1,5 +1,6 @@
 """End-to-end integration tests for patch compilation."""
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -344,10 +345,9 @@ transforms:
         errors = validate_output(content, validation)
         assert len(errors) == 1
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="Root ignores permissions")
     def test_cache_not_writable(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test error when cache directory not writable."""
-        import os
-
         cache = TemplateCache()
         meta = CacheMeta(
             compiled_at="2025-01-01T00:00:00Z",

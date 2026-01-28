@@ -901,7 +901,7 @@ class TestReloadConfig:
         assert result is get_config()
 
     def test_reload_with_project(
-        self, full_global_config_file: Path, project_config_file: Path, tmp_path: Path
+        self, full_global_config_file: Path, project_config_file: Path, tmp_path: Path, monkeypatch
     ) -> None:
         """reload_config with project_path loads merged config."""
         # Create project directory with config
@@ -909,6 +909,9 @@ class TestReloadConfig:
         project_dir.mkdir()
         project_config = project_dir / "bmad-assist.yaml"
         project_config.write_text("timeout: 7777\n")
+
+        # Change CWD to tmp_path to avoid loading real bmad-assist.yaml from project root
+        monkeypatch.chdir(tmp_path)
 
         with patch("bmad_assist.core.config.loaders.GLOBAL_CONFIG_PATH", full_global_config_file):
             config = reload_config(project_path=project_dir)
