@@ -479,3 +479,90 @@ class TestDataModels:
         # Each instance should have its own dict
         ctx1.resolved_variables["key"] = "value"
         assert "key" not in ctx2.resolved_variables
+
+
+class TestInteractiveElementDetection:
+    """Test detection of interactive <ask> elements without patch."""
+
+    def test_ask_element_without_patch_logs_critical(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Workflow with <ask> and no patch logs CRITICAL warning."""
+        import logging
+
+        from bmad_assist.compiler.core import _check_interactive_elements
+
+        instructions = "<workflow><ask>What do you want?</ask><action>Do it</action></workflow>"
+
+        with caplog.at_level(logging.CRITICAL):
+            _check_interactive_elements("test-workflow", instructions, patch_path=None)
+
+        assert "contains <ask> elements but no patch" in caplog.text
+        assert "test-workflow" in caplog.text
+
+    def test_ask_with_patch_no_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Workflow with <ask> but with patch does not log warning."""
+        import logging
+
+        from bmad_assist.compiler.core import _check_interactive_elements
+
+        instructions = "<workflow><ask>Question</ask></workflow>"
+        patch_path = tmp_path / "test.patch.yaml"
+
+        with caplog.at_level(logging.CRITICAL):
+            _check_interactive_elements("test-workflow", instructions, patch_path=patch_path)
+
+        assert "contains <ask> elements" not in caplog.text
+
+    def test_no_ask_element_no_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Workflow without <ask> does not log CRITICAL."""
+        import logging
+
+        from bmad_assist.compiler.core import _check_interactive_elements
+
+        instructions = "<workflow><action>Do something</action><output>Show result</output></workflow>"
+
+        with caplog.at_level(logging.CRITICAL):
+            _check_interactive_elements("test-workflow", instructions, patch_path=None)
+
+        assert "contains <ask> elements" not in caplog.text
+
+    def test_empty_instructions_no_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Empty instructions do not cause warning."""
+        import logging
+
+        from bmad_assist.compiler.core import _check_interactive_elements
+
+        with caplog.at_level(logging.CRITICAL):
+            _check_interactive_elements("test-workflow", "", patch_path=None)
+            _check_interactive_elements("test-workflow", None, patch_path=None)
+
+        assert "contains <ask> elements" not in caplog.text
+
+    def test_ask_pattern_variations(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Various <ask> tag formats are detected."""
+        import logging
+
+        from bmad_assist.compiler.core import _check_interactive_elements
+
+        test_cases = [
+            "<ask>Simple</ask>",
+            "<ASK>Uppercase</ASK>",
+            "<Ask>Mixed case</Ask>",
+            '<ask attr="value">With attribute</ask>',
+            "<ask\n>Newline</ask>",
+        ]
+
+        for instructions in test_cases:
+            caplog.clear()
+            with caplog.at_level(logging.CRITICAL):
+                _check_interactive_elements("test", instructions, patch_path=None)
+            assert "contains <ask> elements" in caplog.text, f"Failed for: {instructions}"

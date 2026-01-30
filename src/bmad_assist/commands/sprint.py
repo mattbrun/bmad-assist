@@ -106,6 +106,9 @@ def _setup_sprint_context(project: str) -> tuple[Path, Path, bool]:
                     paths_config["output_folder"] = config.paths.output_folder
                 if config.paths.project_knowledge:
                     paths_config["project_knowledge"] = config.paths.project_knowledge
+            # Add bmad_paths.epics if configured (supports custom epic locations)
+            if config.bmad_paths and config.bmad_paths.epics:
+                paths_config["epics"] = config.bmad_paths.epics
             init_paths(project_root, paths_config)
         except ConfigError:
             # No config - use defaults

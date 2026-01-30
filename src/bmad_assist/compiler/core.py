@@ -209,6 +209,42 @@ def get_workflow_compiler(workflow_name: str) -> WorkflowCompiler:
     return instance
 
 
+# Pattern to detect interactive <ask> elements in workflow instructions
+_ASK_PATTERN = re.compile(r"<ask[\s>]", re.IGNORECASE)
+
+
+def _check_interactive_elements(
+    workflow_name: str,
+    raw_instructions: str | None,
+    patch_path: Path | None,
+) -> None:
+    """Check for interactive elements in workflow without patch.
+
+    Workflows with <ask> elements require user input and will hang in
+    non-interactive mode (subprocess/automation). This logs a CRITICAL
+    warning if such elements are found and no patch was applied.
+
+    Args:
+        workflow_name: Name of the workflow being compiled.
+        raw_instructions: Raw XML instructions from workflow.
+        patch_path: Path to applied patch, or None if no patch.
+
+    """
+    if patch_path is not None:
+        return  # Patch applied, assume it handles interactive elements
+
+    if not raw_instructions:
+        return  # No instructions to check
+
+    if _ASK_PATTERN.search(raw_instructions):
+        logger.critical(
+            "Workflow '%s' contains <ask> elements but no patch was applied. "
+            "Interactive prompts will hang in non-interactive mode (subprocess/automation). "
+            "Either: (1) add a patch to remove <ask> tags, or (2) remove them from workflow.",
+            workflow_name,
+        )
+
+
 def compile_workflow(
     workflow_name: str,
     context: CompilerContext,
@@ -262,6 +298,9 @@ def compile_workflow(
     # Step 5: Set context for compiler
     context.workflow_ir = workflow_ir
     context.patch_path = patch_path
+
+    # Step 5.1: Check for interactive elements without patch
+    _check_interactive_elements(workflow_name, workflow_ir.raw_instructions, patch_path)
 
     logger.debug(
         "Prepared workflow %s: ir=%s, patch=%s",

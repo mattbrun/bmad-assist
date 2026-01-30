@@ -85,6 +85,9 @@ def qa_generate(
             "implementation_artifacts": loaded_config.paths.implementation_artifacts,
             "project_knowledge": loaded_config.paths.project_knowledge,
         }
+        # Add bmad_paths.epics if configured (supports custom epic locations)
+        if loaded_config.bmad_paths and loaded_config.bmad_paths.epics:
+            paths_config["epics"] = loaded_config.bmad_paths.epics
         init_paths(project_path, paths_config)
     except ConfigError as e:
         _error(f"Config error: {e}")
@@ -234,6 +237,9 @@ def qa_execute(
             "implementation_artifacts": loaded_config.paths.implementation_artifacts,
             "project_knowledge": loaded_config.paths.project_knowledge,
         }
+        # Add bmad_paths.epics if configured (supports custom epic locations)
+        if loaded_config.bmad_paths and loaded_config.bmad_paths.epics:
+            paths_config["epics"] = loaded_config.bmad_paths.epics
         init_paths(project_path, paths_config)
     except ConfigError as e:
         _error(f"Config error: {e}")
