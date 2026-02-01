@@ -16,7 +16,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any, Generator, cast
 
 from rich.console import Console
 
@@ -504,7 +504,7 @@ class StandaloneRunner:
             "nfr-assess": self.run_nfr_assess,
         }
 
-        return method_map[workflow_id](**kwargs)
+        return cast(dict[str, Any], method_map[workflow_id](**kwargs))
 
     def run_framework(self, mode: str = "create") -> dict[str, Any]:
         """Run framework workflow standalone.

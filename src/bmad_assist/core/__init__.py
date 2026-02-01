@@ -135,7 +135,7 @@ _lazy_imports = {
 }
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     """Lazy load attributes on first access."""
     if name in _lazy_imports:
         import importlib

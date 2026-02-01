@@ -326,7 +326,7 @@ async def _invoke_reviewer(
                 cwd=cwd,
                 display_model=display_model,
                 thinking=thinking,
-            ),  # type: ignore[call-arg]  # mypy doesn't handle to_thread kwargs well
+            ),
             timeout=timeout,
         )
 

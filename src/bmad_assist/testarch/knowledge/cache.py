@@ -17,7 +17,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bmad_assist.testarch.knowledge.models import KnowledgeIndex
 
@@ -94,7 +94,7 @@ class FragmentCache:
             self._index_cache = None
             return None
 
-        return self._index_cache.content
+        return cast(KnowledgeIndex, self._index_cache.content)
 
     def set_index(self, index_path: Path, index: KnowledgeIndex, mtime: float) -> None:
         """Cache index with mtime.
@@ -134,7 +134,7 @@ class FragmentCache:
             del self._fragment_cache[fragment_id]
             return None
 
-        return entry.content
+        return cast(str, entry.content)
 
     def set_fragment(self, fragment_id: str, content: str, mtime: float) -> None:
         """Cache fragment content with mtime.

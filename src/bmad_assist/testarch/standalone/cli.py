@@ -9,6 +9,7 @@ Story 25.13: TEA Standalone Runner & CLI.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
@@ -22,6 +23,9 @@ from bmad_assist.cli_utils import (
     _success,
     _validate_project_path,
 )
+
+if TYPE_CHECKING:
+    from bmad_assist.testarch.standalone.runner import StandaloneRunner
 
 console = Console()
 

@@ -45,7 +45,7 @@ and nltk which add ~1.5s to import time.
 
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # Light imports - these are fast and always needed
 from .base import (
@@ -137,7 +137,7 @@ _lazy_imports = {
 }
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type[Any]:
     """Lazy load provider classes on first access."""
     if name in _lazy_imports:
         import importlib
@@ -145,6 +145,8 @@ def __getattr__(name: str):
         module = importlib.import_module(_lazy_imports[name], __package__)
         # ClaudeProvider is an alias for ClaudeSDKProvider
         if name == "ClaudeProvider":
-            return getattr(module, "ClaudeSDKProvider")
-        return getattr(module, name)
+            cls: type[Any] = getattr(module, "ClaudeSDKProvider")
+            return cls
+        cls = getattr(module, name)
+        return cls
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -20,6 +20,7 @@ from bmad_assist.compiler.shared_utils import estimate_tokens
 from bmad_assist.testarch.context.config import TEAContextConfig
 from bmad_assist.testarch.context.resolvers import RESOLVER_REGISTRY
 from bmad_assist.testarch.context.resolvers.atdd import ATDDResolver
+from bmad_assist.testarch.context.resolvers.base import BaseResolver
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -251,6 +252,7 @@ class TEAContextService:
             resolver_cls = RESOLVER_REGISTRY[artifact_type]
 
             # ATDDResolver needs special handling for max_files
+            resolver: BaseResolver
             if resolver_cls is ATDDResolver:
                 resolver = ATDDResolver(
                     base_path,

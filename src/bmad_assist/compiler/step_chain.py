@@ -51,7 +51,7 @@ def parse_step_file(step_path: Path) -> StepIR:
         ) from e
 
     # Parse frontmatter
-    frontmatter: dict = {}
+    frontmatter: dict[str, str] = {}
     raw_content = content
 
     if content.startswith("---"):

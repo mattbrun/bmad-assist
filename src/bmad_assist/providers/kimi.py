@@ -34,6 +34,7 @@ import threading
 import time
 from pathlib import Path
 from subprocess import PIPE, Popen, TimeoutExpired
+from typing import IO
 
 from bmad_assist.core.debug_logger import DebugJsonLogger
 from bmad_assist.core.exceptions import (
@@ -130,7 +131,7 @@ def _truncate_prompt(prompt: str) -> str:
     return prompt[:PROMPT_TRUNCATE_LENGTH] + "..."
 
 
-def _extract_text_from_content(content: str | list | None) -> str:
+def _extract_text_from_content(content: str | list[dict[str, str]] | None) -> str:
     """Extract text from kimi-cli content field.
 
     Kimi-cli can return content in two formats:
@@ -217,8 +218,9 @@ def _calculate_retry_delay(attempt: int) -> float:
     """
     base_delay = min(RETRY_BASE_DELAY * (2**attempt), RETRY_MAX_DELAY)
     # Add ±25% jitter
-    jitter = base_delay * 0.25 * (random.random() * 2 - 1)
-    return max(0.1, base_delay + jitter)
+    rand_factor: float = random.random() * 2 - 1
+    jitter = base_delay * 0.25 * rand_factor
+    return float(max(0.1, base_delay + jitter))
 
 
 class KimiProvider(BaseProvider):
@@ -387,7 +389,7 @@ class KimiProvider(BaseProvider):
 
     def _cleanup_process(
         self,
-        process: Popen,
+        process: Popen[str],
         stdout_thread: threading.Thread,
         stderr_thread: threading.Thread,
         timeout_occurred: bool = False,
@@ -603,7 +605,7 @@ class KimiProvider(BaseProvider):
                 print_output = logger.isEnabledFor(logging.DEBUG)
 
                 def process_json_stream(
-                    stream,
+                    stream: IO[str],
                     text_parts: list[str],
                     raw_lines: list[str],
                     print_progress: bool,
@@ -670,7 +672,7 @@ class KimiProvider(BaseProvider):
                     stream.close()
 
                 def read_stderr(
-                    stream,
+                    stream: IO[str],
                     chunks: list[str],
                     print_lines: bool,
                     color_idx: int | None,

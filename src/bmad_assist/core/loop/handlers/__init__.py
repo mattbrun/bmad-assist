@@ -9,7 +9,7 @@ Each phase has its own handler that:
 NOTE: Uses lazy loading to avoid importing heavy dependencies (benchmarking -> textstat -> nltk).
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # Light import - BaseHandler and HandlerConfig are always needed
 from bmad_assist.core.loop.handlers.base import BaseHandler, HandlerConfig
@@ -58,11 +58,12 @@ _lazy_imports = {
 }
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type[Any]:
     """Lazy load handler classes on first access."""
     if name in _lazy_imports:
         import importlib
 
         module = importlib.import_module(_lazy_imports[name], __package__)
-        return getattr(module, name)
+        cls: type[Any] = getattr(module, name)
+        return cls
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

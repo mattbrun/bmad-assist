@@ -25,7 +25,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Final, TypeVar
+from typing import Any, Final, TypeVar, cast
 
 import questionary
 import typer
@@ -313,7 +313,7 @@ providers:
             default="claude-subprocess",
         ).ask()
 
-        return _check_cancelled(result, self.console)
+        return cast(str, _check_cancelled(result, self.console))
 
     def _select_model(self, provider: str) -> str:
         """Select a model for the chosen provider.
@@ -337,7 +337,7 @@ providers:
             default=default,
         ).ask()
 
-        return _check_cancelled(result, self.console)
+        return cast(str, _check_cancelled(result, self.console))
 
     def _select_multi_validators(self) -> list[dict[str, Any]]:
         """Select multi-validators using add/remove loop.
