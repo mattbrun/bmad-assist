@@ -511,8 +511,11 @@ async def run_validation_phase(
     )
 
     # Step 1: Compile prompt once
+    # CRITICAL: Run in thread to avoid nested event loop when auto-compilation
+    # triggers an LLM call (provider.invoke → run_async_in_thread would fail
+    # if called from the main thread where this event loop is already running)
     logger.debug("Compiling validate-story workflow")
-    prompt = _compile_validation_prompt(project_path, epic_num, story_num)
+    prompt = await asyncio.to_thread(_compile_validation_prompt, project_path, epic_num, story_num)
     logger.debug("Compiled prompt: %d chars", len(prompt))
 
     # Save prompt to .bmad-assist/prompts/ (atomic write, always saved)
