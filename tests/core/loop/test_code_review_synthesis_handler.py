@@ -294,6 +294,44 @@ class TestCodeReviewSynthesisHandler:
             assert "response" in result.outputs
             assert "Synthesis Summary" in result.outputs["response"]
 
+    def test_execute_passes_allowed_tools(
+        self,
+        synthesis_config: Config,
+        project_with_story: Path,
+        state_for_synthesis: State,
+        cached_reviews: str,
+    ) -> None:
+        """Synthesis restricts tools to prevent codebase exploration."""
+        from bmad_assist.core.loop.handlers.code_review_synthesis import (
+            CodeReviewSynthesisHandler,
+        )
+
+        handler = CodeReviewSynthesisHandler(synthesis_config, project_with_story)
+
+        with (
+            patch.object(handler, "render_prompt") as mock_render,
+            patch.object(handler, "invoke_provider") as mock_invoke,
+            patch("bmad_assist.core.debug_logger.save_prompt"),
+        ):
+            mock_render.return_value = "<compiled>test synthesis prompt</compiled>"
+            mock_invoke.return_value = ProviderResult(
+                stdout=_MOCK_SYNTHESIS_OUTPUT,
+                stderr="",
+                exit_code=0,
+                duration_ms=5000,
+                model="opus-4",
+                command=("claude", "--print"),
+            )
+
+            handler.execute(state_for_synthesis)
+
+            # Verify invoke_provider was called with allowed_tools restriction
+            mock_invoke.assert_called_once()
+            call_kwargs = mock_invoke.call_args
+            assert call_kwargs.kwargs.get("allowed_tools") == [
+                "Read", "Edit", "Write", "Bash",
+            ]
+
     def test_execute_fails_when_no_session_found(
         self,
         synthesis_config: Config,
