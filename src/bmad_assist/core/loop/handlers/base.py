@@ -685,7 +685,11 @@ class BaseHandler(ABC):
             return getattr(phase_config, "reasoning_effort", None)
 
     def invoke_provider(
-        self, prompt: str, retry_timeout_minutes: int = 30, retry_delay: int = 60
+        self,
+        prompt: str,
+        retry_timeout_minutes: int = 30,
+        retry_delay: int = 60,
+        allowed_tools: list[str] | None = None,
     ) -> ProviderResult:
         """Invoke the provider with the given prompt, with automatic retry on failure.
 
@@ -696,6 +700,9 @@ class BaseHandler(ABC):
             prompt: Rendered prompt string.
             retry_timeout_minutes: Total time to keep retrying (default: 30 minutes).
             retry_delay: Seconds to wait between retries (default: 60).
+            allowed_tools: Optional list of allowed tool names. When set, only these
+                tools are available to the agent (e.g., ["Read", "Edit", "Bash"]).
+                None means all tools are available (default).
 
         Returns:
             ProviderResult with stdout, stderr, exit_code, etc.
@@ -789,6 +796,7 @@ class BaseHandler(ABC):
                     settings_file=settings_file,
                     cwd=self.project_path,
                     reasoning_effort=reasoning_effort,
+                    allowed_tools=allowed_tools,
                 )
 
             except ProviderExitCodeError as e:

@@ -425,8 +425,15 @@ class CodeReviewSynthesisHandler(BaseHandler):
             # Record start time for benchmarking
             start_time = datetime.now(UTC)
 
-            # Invoke Master LLM
-            result = self.invoke_provider(prompt)
+            # Invoke Master LLM with restricted tools.
+            # Synthesis has all context embedded in the prompt (reviews, git diff,
+            # source files, story). Restrict tools to prevent the LLM from exploring
+            # the codebase instead of synthesizing findings — exploration produces
+            # minimal text output and fails the min-chars check.
+            result = self.invoke_provider(
+                prompt,
+                allowed_tools=["Read", "Edit", "Write", "Bash"],
+            )
 
             # Record end time for benchmarking
             end_time = datetime.now(UTC)
