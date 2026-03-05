@@ -252,7 +252,7 @@ def resolve_variables(
     7. project_context resolution (dual-name detection with token estimate)
     8. input_file_patterns resolution (directory-based - overrides earlier)
     9. sprint_status resolution (docs/ or docs/sprint-artifacts/)
-    10. Hard overrides (user_skill_level, communication_language, etc.)
+    10. Overrides & defaults (user_skill_level hard; language defaults soft)
     11. Remove internal/unused variables
 
     Args:
@@ -416,10 +416,23 @@ def resolve_variables(
                 resolved[key] = value
                 logger.debug("Set from TEA resolver: %s", key)
 
-    # Step 10: Apply hard overrides (always enforced regardless of config)
+    # Step 10: Apply overrides and defaults
+    # - user_skill_level: hard override (always enforced)
+    # - communication_language, document_output_language: soft defaults (config.yaml wins)
     resolved["user_skill_level"] = "expert"
-    resolved["communication_language"] = "English"
-    resolved["document_output_language"] = "English"
+    resolved.setdefault("communication_language", "English")
+    resolved.setdefault("document_output_language", "English")
+
+    # Warn about non-English language (higher token usage, potential quality impact)
+    for lang_key in ("communication_language", "document_output_language"):
+        lang_val = resolved.get(lang_key, "English")
+        if lang_val != "English":
+            logger.warning(
+                "%s set to '%s' — non-English languages use more tokens "
+                "and may reduce output quality with smaller/local models",
+                lang_key,
+                lang_val,
+            )
 
     # Step 11: Remove internal/unused variables
     # - standalone: unused workflow flag, conflicts with future "standalone story" feature

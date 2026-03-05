@@ -339,6 +339,19 @@ Three detection mechanisms:
 - **Repeating** — Same tool called repeatedly with identical arguments
 - **Runaway** — Total tool calls exceed reasonable limit
 
+## Language Settings
+
+Control the language used for LLM communication and generated documents:
+
+```yaml
+communication_language: French
+document_output_language: French
+```
+
+Both default to `English` if not set. These variables are injected into all workflow prompts — the LLM will communicate and generate artifacts in the specified language.
+
+> **Note:** English is recommended as it uses the fewest tokens (~0.75 tokens/word vs 1.2–1.8x for other European languages, 2–3x for CJK/Arabic) and produces the best reasoning quality. Frontier models (Claude, GPT, Gemini) handle non-English well, but smaller or local models may see significant quality degradation — research shows that chain-of-thought reasoning in non-English languages generates less coherent reasoning chains, especially in models under 100B parameters.
+
 ## Warnings
 
 Suppress specific warnings:

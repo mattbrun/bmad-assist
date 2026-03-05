@@ -2,6 +2,11 @@
 
 All notable changes to bmad-assist are documented in this file.
 
+## [0.4.33] - 2026-03-05
+
+### Added
+- **Configurable Language** - `communication_language` and `document_output_language` now respect user config instead of being hard-overridden to English. Defaults to English with a runtime warning about token/quality trade-offs for non-English languages. Based on [PR #37](https://github.com/Pawel-N-pl/bmad-assist/pull/37) by [@sgaloux](https://github.com/sgaloux)
+
 ## [0.4.32] - 2026-03-04
 
 ### Added
