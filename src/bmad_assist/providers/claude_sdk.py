@@ -308,7 +308,7 @@ class ClaudeSDKProvider(BaseProvider):
         # Build SDK options with explicit values
         options = ClaudeAgentOptions(
             model=model,
-            permission_mode="acceptEdits",  # Explicit automation mode
+            permission_mode="bypassPermissions",  # Full tool access for automated workflows (Bash, Edit, etc.)
             settings=str(settings) if settings is not None else None,
             cwd=cwd,
             cli_path=cli_path,  # None = SDK default (bundled → system)
