@@ -48,8 +48,8 @@ from bmad_assist.benchmarking import (
 from bmad_assist.compiler import compile_workflow
 from bmad_assist.compiler.types import CompilerContext
 from bmad_assist.core.config import Config, get_phase_retries, get_phase_timeout
-from bmad_assist.core.config.models.features import ToolGuardConfig
 from bmad_assist.core.config.loaders import parse_parallel_delay
+from bmad_assist.core.config.models.features import ToolGuardConfig
 from bmad_assist.core.config.models.providers import (
     MultiProviderConfig,
     get_phase_provider_config,
