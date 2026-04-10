@@ -685,7 +685,9 @@ class CodeReviewSynthesisHandler(BaseHandler):
                 # Extract synthesis report using priority-based extraction
                 # 1. Markers, 2. Summary header, 3. Full content
                 extracted_synthesis = extract_synthesis_report(
-                    result.stdout, synthesis_type="code_review"
+                    result.stdout,
+                    synthesis_type="code_review",
+                    termination_reason=getattr(result, "termination_reason", None),
                 )
 
                 # Guard against silent provider failure: if provider returns

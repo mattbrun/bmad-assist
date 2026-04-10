@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -59,7 +60,11 @@ from bmad_assist.core.loop.helpers import (
     _get_story_title,
     _print_phase_banner,
 )
-from bmad_assist.core.loop.interactive import checkpoint_and_prompt, is_skip_story_prompts
+from bmad_assist.core.loop.interactive import (
+    checkpoint_and_prompt,
+    is_backfill_enabled,
+    is_skip_story_prompts,
+)
 from bmad_assist.core.loop.locking import _running_lock
 from bmad_assist.core.loop.notifications import _dispatch_event
 from bmad_assist.core.loop.run_tracking import (
@@ -587,6 +592,94 @@ def _get_stop_exit_reason(cancel_ctx: CancellationContext | None) -> LoopExitRea
     return _get_interrupt_exit_reason()
 
 
+def _check_backfill(
+    state: State,
+    just_completed_story: str,
+    epic_list: list[EpicId],
+    epic_stories_loader: Callable[[EpicId], list[str]],
+    project_path: Path,
+    state_path: Path,
+) -> State | None:
+    """Check for backfill stories and return updated state if found.
+
+    Called after story completion when --backfill is enabled. Detects
+    gap stories (missed/skipped) that come before the forward frontier
+    and redirects the runner to the first one.
+
+    During backfill:
+    - No epic teardown/retrospective is triggered
+    - No epic-boundary prompts are shown
+    - Epic switching happens silently (on current git branch)
+
+    Args:
+        state: Current state after story completion.
+        just_completed_story: The story that was just completed.
+        epic_list: All epic IDs.
+        epic_stories_loader: Loader for epic story lists.
+        project_path: Project root path.
+        state_path: Path to state file.
+
+    Returns:
+        New State pointing to the first backfill story, or None if
+        no gaps found (normal advancement should proceed).
+
+    """
+    from bmad_assist.bmad.state_reader import _load_sprint_status
+    from bmad_assist.core.loop.backfill import detect_backfill_stories
+    from bmad_assist.core.paths import get_paths
+
+    # Load sprint statuses for deferred detection
+    try:
+        paths = get_paths()
+        bmad_path = paths.project_knowledge
+    except RuntimeError:
+        bmad_path = project_path / "_bmad-output"
+
+    sprint_statuses = _load_sprint_status(bmad_path) or {}
+
+    gaps = detect_backfill_stories(
+        completed_stories=list(state.completed_stories),
+        current_story=just_completed_story,
+        epic_list=epic_list,
+        epic_stories_loader=epic_stories_loader,
+        sprint_statuses=sprint_statuses,
+    )
+
+    if not gaps:
+        return None
+
+    # Redirect to first gap story
+    next_story = gaps[0]
+    next_epic_part = next_story.split(".")[0]
+    try:
+        next_epic: EpicId = int(next_epic_part)
+    except ValueError:
+        next_epic = next_epic_part
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    backfill_state = state.model_copy(
+        update={
+            "current_epic": next_epic,
+            "current_story": next_story,
+            "current_phase": Phase.CREATE_STORY,
+            "code_review_rework_count": 0,
+            "updated_at": now,
+        }
+    )
+    save_state(backfill_state, state_path)
+
+    logger.info(
+        "Backfill: %d gap stories detected, next: %s (epic %s). "
+        "Remaining: %s",
+        len(gaps),
+        next_story,
+        next_epic,
+        ", ".join(gaps[1:5]) + ("..." if len(gaps) > 5 else ""),
+    )
+
+    return backfill_state
+
+
 def _run_loop_body(
     config: Config,
     project_path: Path,
@@ -748,7 +841,9 @@ def _run_loop_body(
         # Story 22.9: Emit dashboard story_transition and workflow_status events
         sequence_id += 1
         epic_num = int(state.current_epic) if state.current_epic else 1
-        story_num = int(first_story.split(".")[-1])
+        _story_part = first_story.split(".")[-1]
+        _m = re.match(r"(\d+)", _story_part)
+        story_num = int(_m.group(1)) if _m else 1
         story_title = (
             first_story.split(".")[-1].replace("-", " ") if "." in first_story else first_story
         )
@@ -1442,6 +1537,31 @@ def _run_loop_body(
                     )
 
                 new_state, is_epic_complete = handle_story_completion(state, epic_stories, state_path)
+
+                # Backfill check: before normal advancement, see if there are
+                # missed stories that come before the forward frontier.
+                if is_backfill_enabled() and state.current_story:
+                    backfill_next = _check_backfill(
+                        new_state, state.current_story, epic_list,
+                        epic_stories_loader, project_path, state_path,
+                    )
+                    if backfill_next is not None:
+                        state = backfill_next
+                        start_story_timing(state)
+                        _invoke_sprint_sync(state, project_path)
+                        logger.info(
+                            "Backfill: advancing to story %s (epic %s)",
+                            state.current_story,
+                            state.current_epic,
+                        )
+                        _dispatch_event(
+                            "story_started",
+                            project_path,
+                            state,
+                            phase=state.current_phase.name if state.current_phase else "CREATE_STORY",
+                            story_title=_get_story_title(project_path, state.current_story or ""),
+                        )
+                        continue  # Execute backfill story
 
                 if is_epic_complete:
                     # Run all epic teardown phases (retrospective, qa_plan_*, etc.)

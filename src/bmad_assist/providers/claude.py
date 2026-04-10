@@ -740,7 +740,8 @@ class ClaudeSubprocessProvider(BaseProvider):
                         self._current_process = None
 
                     raise ProviderTimeoutError(
-                        f"Claude CLI timeout after {effective_timeout}s: {truncated}",
+                        f"Claude CLI timeout after {effective_timeout}s "
+                        f"(model={effective_model}, prompt_chars={len(prompt)})",
                         partial_result=partial_result,
                     )
 

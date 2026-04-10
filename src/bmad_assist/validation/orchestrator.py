@@ -574,6 +574,20 @@ async def run_validation_phase(
     # Step 2: Build list of validators (multi + master)
     timeout = get_phase_timeout(config, "validate_story")
     timeout_retries = get_phase_retries(config, "validate_story")
+
+    # Scale timeout proportionally to prompt size — large prompts
+    # need more time for LLM processing and tool interactions
+    reference_prompt_chars = 100_000
+    if len(prompt) > reference_prompt_chars:
+        base_timeout = timeout
+        timeout = int(timeout * (len(prompt) / reference_prompt_chars))
+        logger.debug(
+            "Scaled validation timeout: base=%d, prompt_chars=%d, effective=%d",
+            base_timeout,
+            len(prompt),
+            timeout,
+        )
+
     # AC7: Check if benchmarking is enabled
     benchmarking_enabled = should_collect_benchmarking(config)
     if benchmarking_enabled:

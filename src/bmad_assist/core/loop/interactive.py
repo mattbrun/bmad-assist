@@ -24,6 +24,9 @@ _force_non_interactive: bool = False
 # Global flag to skip story boundary prompts but keep epic boundary prompts
 _skip_story_prompts: bool = False
 
+# Global flag to enable backfill mode (implement missed stories before forward progress)
+_backfill_enabled: bool = False
+
 
 def set_non_interactive(enabled: bool) -> None:
     """Set the global non-interactive mode.
@@ -61,6 +64,26 @@ def set_skip_story_prompts(enabled: bool) -> None:
 def is_skip_story_prompts() -> bool:
     """Check if story boundary prompts should be skipped."""
     return _skip_story_prompts
+
+
+def set_backfill_enabled(enabled: bool) -> None:
+    """Set the global backfill mode.
+
+    When enabled, after completing the current story the runner scans
+    for missed/skipped stories before the current position and implements
+    them before continuing forward.
+
+    Args:
+        enabled: True to enable backfill mode.
+
+    """
+    global _backfill_enabled
+    _backfill_enabled = enabled
+
+
+def is_backfill_enabled() -> bool:
+    """Check if backfill mode is enabled."""
+    return _backfill_enabled
 
 
 def prompt_continuation(message: str) -> bool:

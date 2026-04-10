@@ -18,6 +18,7 @@ has write permission to modify the story file.
 """
 
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -135,7 +136,8 @@ class ValidateStorySynthesisHandler(BaseHandler):
         if epic_num is None or story_num_str is None:
             raise ConfigError("Cannot synthesize: missing epic_num or story_num in state")
 
-        story_num = int(story_num_str)
+        _m = re.match(r"(\d+)", story_num_str)
+        story_num = int(_m.group(1)) if _m else 1
 
         # Get session_id for loading validations
         session_id = self._get_session_id_from_state(state)
@@ -402,7 +404,8 @@ class ValidateStorySynthesisHandler(BaseHandler):
             if epic_num is None or story_num_str is None:
                 raise ConfigError("Cannot synthesize: missing epic_num or story_num in state")
 
-            story_num = int(story_num_str)
+            _m = re.match(r"(\d+)", story_num_str)
+            story_num = int(_m.group(1)) if _m else 1
 
             # Get session_id and load validations for report saving
             session_id = self._get_session_id_from_state(state)
@@ -460,7 +463,9 @@ class ValidateStorySynthesisHandler(BaseHandler):
                 # Extract synthesis report using priority-based extraction
                 # 1. Markers, 2. Summary header, 3. Full content
                 extracted_synthesis = extract_synthesis_report(
-                    result.stdout, synthesis_type="validation"
+                    result.stdout,
+                    synthesis_type="validation",
+                    termination_reason=getattr(result, "termination_reason", None),
                 )
 
                 # Guard against silent provider failure: if provider returns

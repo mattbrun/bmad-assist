@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 # Regex patterns for epic file parsing
 # Pattern: ## Story X.Y: Title (2+ hashes - supports ##, ###, ####, etc.)
+# Supports sub-stories: 10.3a, 10.3a-ii, 10.3a-iii, 10.4b, etc.
 # Note: \s* before colon supports French typographic convention (space before colon)
 STORY_HEADER_PATTERN = re.compile(
-    r"^#{2,}\s+Story\s+(\d+)\.(\d+)\s*:\s+(.+)$",
+    r"^#{2,}\s+Story\s+(\d+)\.([\w]+(?:-[\w]+)*)\s*:\s+(.+)$",
     re.MULTILINE,
 )
 

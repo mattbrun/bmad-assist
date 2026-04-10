@@ -99,6 +99,66 @@ def check_for_edit_failures(stdout: str, target_hint: str | None = None) -> None
             # Continue checking for other patterns - don't break, log all failures
 
 
+# Regex to match <file ...>...</file> blocks within <context> section.
+# Files are ordered by priority (highest-scored first) so we remove from the end.
+_FILE_BLOCK_RE = re.compile(
+    r'<file\s+id="[^"]*"\s+path="([^"]*)"[^>]*>.*?</file>',
+    re.DOTALL,
+)
+
+
+def _trim_source_context(prompt: str, current_tokens: int, budget: int) -> str:
+    """Trim lowest-priority source files from compiled prompt to fit budget.
+
+    Source files in the <context> section are ordered by score (highest first).
+    We remove files from the end (lowest priority) until the estimated token
+    count is within budget.
+
+    Args:
+        prompt: Full compiled prompt XML string.
+        current_tokens: Current estimated token count (len/4).
+        budget: Target token budget.
+
+    Returns:
+        Prompt with lowest-priority files removed, or unchanged if no
+        <context> section or if trimming isn't possible.
+
+    """
+    # Find all file blocks
+    file_blocks = list(_FILE_BLOCK_RE.finditer(prompt))
+    if not file_blocks:
+        return prompt
+
+    # Remove files from the end (lowest priority) until within budget
+    trimmed = prompt
+    removed_count = 0
+    for match in reversed(file_blocks):
+        if len(trimmed) // 4 <= budget:
+            break
+        path = match.group(1)
+        # Remove the file block (and any surrounding newline)
+        start = match.start()
+        end = match.end()
+        # Also remove trailing newline if present
+        if end < len(trimmed) and trimmed[end] == "\n":
+            end += 1
+        trimmed = trimmed[:start] + trimmed[end:]
+        removed_count += 1
+        logger.info("Budget trim: removed source file '%s'", path)
+
+    if removed_count > 0:
+        new_tokens = len(trimmed) // 4
+        logger.info(
+            "Trimmed %d source file(s): %d → %d estimated tokens (budget: %d)",
+            removed_count,
+            current_tokens,
+            new_tokens,
+            budget,
+        )
+
+    return trimmed
+
+
 @dataclass
 class HandlerConfig:
     """Configuration loaded from handler YAML file.
@@ -358,15 +418,18 @@ class BaseHandler(ABC):
                 config = get_config()
                 workflow_budget = config.compiler.source_context.budgets.get_budget(workflow_name)
                 # Prompt is typically ~2x the token estimate due to XML overhead
-                expected_prompt_tokens = compiled.token_estimate * 2
+                expected_prompt_tokens = len(prompt) // 4
 
                 if expected_prompt_tokens > workflow_budget:
                     logger.warning(
                         "Prompt may exceed budget for %s: estimated %d tokens "
-                        "(config budget: %d). Consider reducing source context.",
+                        "(config budget: %d). Trimming lowest-priority source files.",
                         workflow_name,
                         expected_prompt_tokens,
                         workflow_budget,
+                    )
+                    prompt = _trim_source_context(
+                        prompt, expected_prompt_tokens, workflow_budget
                     )
             except Exception:
                 # Config not loaded (e.g., in tests) - skip budget warning
