@@ -164,7 +164,7 @@ def check_for_deleted_story_files(project_path: Path) -> list[str]:
 
         # Check if it's a story file: docs/sprint-artifacts/{epic}-{story}-{slug}.md
         # or stories/{epic}-{story}-{slug}.md
-        story_pattern = re.compile(r"^(docs/sprint-artifacts/|stories/)?\d+-\d+-[\w-]+\.md$")
+        story_pattern = re.compile(r"^(docs/sprint-artifacts/|stories/)?\d+-\d+(?:[a-z](?:-[ivx]{2,})*)?-[\w-]+\.md$")
         if story_pattern.match(filename):
             deleted_files.append(filename)
 

@@ -54,7 +54,7 @@ DEPENDENCIES_PATTERN = re.compile(
 )
 
 # Pattern to extract story numbers from dependencies
-STORY_NUMBER_PATTERN = re.compile(r"(\d+\.\d+)")
+STORY_NUMBER_PATTERN = re.compile(r"(\d+\.[\w]+(?:-[\w]+)*)")
 
 # Pattern for non-standard dependency codes like PRSP-5-1, REFACTOR-2-1
 NON_STANDARD_DEP_PATTERN = re.compile(r"([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)", re.IGNORECASE)

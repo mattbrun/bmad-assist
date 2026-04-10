@@ -363,7 +363,7 @@ def _parse_sprint_status_key(key: str) -> str | None:
     # Examples: 10-3a-ii-implement-... -> epic=10, story=3a-ii
     #           2-1-markdown-... -> epic=2, story=1
     #           testarch-1-config -> epic=testarch, story=1
-    m = _re.match(r"^([^-]+)-(\d+[a-z]?(?:-[ivx]+)*)-", key)
+    m = _re.match(r"^([^-]+)-(\d+(?:[a-z](?:-[ivx]{2,})*)?)-", key)
     if m:
         epic_part = m.group(1)
         story_part = m.group(2)
@@ -455,7 +455,7 @@ def _load_sprint_status_stories(bmad_path: Path) -> list[EpicStory] | None:
                 # Extract title from the slug portion after the story number
                 import re as _re
 
-                m = _re.match(r"^[^-]+-\d+[a-z]?(?:-[ivx]+)*-(.+)$", key)
+                m = _re.match(r"^[^-]+-\d+(?:[a-z](?:-[ivx]{2,})*)?-(.+)$", key)
                 title = m.group(1).replace("-", " ") if m else key
 
                 if not isinstance(status, str):
