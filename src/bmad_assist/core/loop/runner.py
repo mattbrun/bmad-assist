@@ -1562,6 +1562,8 @@ def _run_loop_body(
                 # This runs for BOTH epic-complete and non-epic-complete cases,
                 # and suppresses epic teardown/retrospective during backfill.
                 if is_backfill_enabled() and state.current_story:
+                    # Remember frontier BEFORE check (it clears on completion)
+                    frontier_before = get_backfill_frontier()
                     backfill_next = _check_backfill(
                         new_state, state.current_story, epic_list,
                         epic_stories_loader, project_path, state_path,
@@ -1589,6 +1591,24 @@ def _run_loop_body(
                             story_title=_get_story_title(project_path, state.current_story or ""),
                         )
                         continue  # Execute backfill story
+
+                    # Backfill just completed — if this epic was a backfilled
+                    # epic (not the forward epic), skip its teardown too
+                    if is_epic_complete and frontier_before is not None:
+                        frontier_epic = frontier_before.split(".")[0]
+                        current_epic_str = str(state.current_epic)
+                        if current_epic_str != frontier_epic:
+                            logger.info(
+                                "Backfill complete: skipping epic %s teardown "
+                                "(backfilled epic, forward epic is %s)",
+                                state.current_epic,
+                                frontier_epic,
+                            )
+                            # Advance to forward position (next story after frontier)
+                            state = new_state
+                            start_story_timing(state)
+                            _invoke_sprint_sync(state, project_path)
+                            continue
 
                 if is_epic_complete:
                     # Run all epic teardown phases (retrospective, qa_plan_*, etc.)
