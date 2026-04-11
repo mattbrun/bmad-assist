@@ -693,7 +693,7 @@ def save_synthesis_report(
     session_id: str,
     validators_used: list[str],
     epic: EpicId,
-    story: int,
+    story: int | str,
     duration_ms: int,
     validations_dir: Path,
     run_timestamp: datetime | None = None,

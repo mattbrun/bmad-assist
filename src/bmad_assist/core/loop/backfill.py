@@ -98,7 +98,7 @@ def detect_backfill_stories(
     return gaps
 
 
-def _story_global_sort_key(story_id: str) -> tuple:
+def _story_global_sort_key(story_id: str) -> tuple[int, int | str, tuple[int, str, list[str]]]:
     """Generate a global sort key for a story ID like '10.3a'.
 
     Combines epic number and story part for cross-epic ordering.

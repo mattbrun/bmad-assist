@@ -616,7 +616,7 @@ class ValidateStorySynthesisHandler(BaseHandler):
         self,
         synthesis_output: str,
         epic_num: EpicId,
-        story_num: int,
+        story_num: int | str,
         story_title: str,
         start_time: datetime,
         end_time: datetime,

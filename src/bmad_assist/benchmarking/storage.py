@@ -95,7 +95,7 @@ class RecordFilters:
     date_from: datetime | None = None
     date_to: datetime | None = None
     epic: int | None = None
-    story: int | None = None
+    story: int | str | None = None
     provider: str | None = None
     role: EvaluatorRole | None = None
     workflow_id: str | None = None  # Filter by workflow.id (e.g., "code-review")
