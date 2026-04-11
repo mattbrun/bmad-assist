@@ -62,8 +62,10 @@ from bmad_assist.core.loop.helpers import (
 )
 from bmad_assist.core.loop.interactive import (
     checkpoint_and_prompt,
+    get_backfill_frontier,
     is_backfill_enabled,
     is_skip_story_prompts,
+    set_backfill_frontier,
 )
 from bmad_assist.core.loop.locking import _running_lock
 from bmad_assist.core.loop.notifications import _dispatch_event
@@ -606,6 +608,11 @@ def _check_backfill(
     gap stories (missed/skipped) that come before the forward frontier
     and redirects the runner to the first one.
 
+    The forward frontier is set once (the story that was current when
+    backfill first activates) and remains fixed throughout the backfill
+    pass. This prevents the frontier from shifting as each backfill
+    story completes.
+
     During backfill:
     - No epic teardown/retrospective is triggered
     - No epic-boundary prompts are shown
@@ -628,6 +635,14 @@ def _check_backfill(
     from bmad_assist.core.loop.backfill import detect_backfill_stories
     from bmad_assist.core.paths import get_paths
 
+    # Set frontier on first backfill activation — this is the fixed
+    # reference point for the entire backfill pass
+    frontier = get_backfill_frontier()
+    if frontier is None:
+        frontier = just_completed_story
+        set_backfill_frontier(frontier)
+        logger.info("Backfill: frontier set to %s", frontier)
+
     # Load sprint statuses for deferred detection
     try:
         paths = get_paths()
@@ -637,15 +652,19 @@ def _check_backfill(
 
     sprint_statuses = _load_sprint_status(bmad_path) or {}
 
+    # Always use the fixed frontier, not the just-completed story
     gaps = detect_backfill_stories(
         completed_stories=list(state.completed_stories),
-        current_story=just_completed_story,
+        current_story=frontier,
         epic_list=epic_list,
         epic_stories_loader=epic_stories_loader,
         sprint_statuses=sprint_statuses,
     )
 
     if not gaps:
+        # Backfill complete — clear frontier, resume normal execution
+        set_backfill_frontier(None)
+        logger.info("Backfill complete: all gap stories implemented, resuming forward execution")
         return None
 
     # Redirect to first gap story
@@ -669,7 +688,7 @@ def _check_backfill(
     save_state(backfill_state, state_path)
 
     logger.info(
-        "Backfill: %d gap stories detected, next: %s (epic %s). "
+        "Backfill: %d gap stories remaining, next: %s (epic %s). "
         "Remaining: %s",
         len(gaps),
         next_story,
@@ -1538,14 +1557,22 @@ def _run_loop_body(
 
                 new_state, is_epic_complete = handle_story_completion(state, epic_stories, state_path)
 
-                # Backfill check: before normal advancement, see if there are
-                # missed stories that come before the forward frontier.
+                # Backfill check: before normal advancement or epic teardown,
+                # see if there are missed stories before the forward frontier.
+                # This runs for BOTH epic-complete and non-epic-complete cases,
+                # and suppresses epic teardown/retrospective during backfill.
                 if is_backfill_enabled() and state.current_story:
                     backfill_next = _check_backfill(
                         new_state, state.current_story, epic_list,
                         epic_stories_loader, project_path, state_path,
                     )
                     if backfill_next is not None:
+                        if is_epic_complete:
+                            logger.info(
+                                "Backfill: skipping epic %s teardown/retrospective "
+                                "(backfill stories pending)",
+                                state.current_epic,
+                            )
                         state = backfill_next
                         start_story_timing(state)
                         _invoke_sprint_sync(state, project_path)

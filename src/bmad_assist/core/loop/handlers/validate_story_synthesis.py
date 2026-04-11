@@ -136,8 +136,10 @@ class ValidateStorySynthesisHandler(BaseHandler):
         if epic_num is None or story_num_str is None:
             raise ConfigError("Cannot synthesize: missing epic_num or story_num in state")
 
-        _m = re.match(r"(\d+)", story_num_str)
-        story_num = int(_m.group(1)) if _m else 1
+        story_num: int | str = story_num_str
+        _m = re.match(r"(\d+)$", story_num_str)
+        if _m:
+            story_num = int(_m.group(1))
 
         # Get session_id for loading validations
         session_id = self._get_session_id_from_state(state)
@@ -404,8 +406,10 @@ class ValidateStorySynthesisHandler(BaseHandler):
             if epic_num is None or story_num_str is None:
                 raise ConfigError("Cannot synthesize: missing epic_num or story_num in state")
 
-            _m = re.match(r"(\d+)", story_num_str)
-            story_num = int(_m.group(1)) if _m else 1
+            story_num: int | str = story_num_str
+            _m = re.match(r"(\d+)$", story_num_str)
+            if _m:
+                story_num = int(_m.group(1))
 
             # Get session_id and load validations for report saving
             session_id = self._get_session_id_from_state(state)

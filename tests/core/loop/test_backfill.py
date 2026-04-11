@@ -182,3 +182,41 @@ class TestDetectBackfillStories:
             sprint_statuses={"5.1": "cancelled", "5.2": "skipped"},
         )
         assert gaps == []
+
+    def test_frontier_stays_fixed_across_backfill_completions(self) -> None:
+        """Gaps are always relative to the original frontier, not the last backfill story."""
+        stories = {
+            1: ["1.1", "1.5a"],
+            10: ["10.1", "10.3a", "10.3b", "10.6"],
+        }
+        frontier = "10.6"
+        completed = ["1.1", "10.1", "10.6"]
+
+        # First call: 3 gaps detected
+        gaps1 = detect_backfill_stories(
+            completed_stories=completed,
+            current_story=frontier,
+            epic_list=[1, 10],
+            epic_stories_loader=_loader(stories),
+        )
+        assert gaps1 == ["1.5a", "10.3a", "10.3b"]
+
+        # After completing 1.5a, frontier stays at 10.6
+        completed.append("1.5a")
+        gaps2 = detect_backfill_stories(
+            completed_stories=completed,
+            current_story=frontier,  # Same frontier!
+            epic_list=[1, 10],
+            epic_stories_loader=_loader(stories),
+        )
+        assert gaps2 == ["10.3a", "10.3b"]
+
+        # After completing all gaps, empty
+        completed.extend(["10.3a", "10.3b"])
+        gaps3 = detect_backfill_stories(
+            completed_stories=completed,
+            current_story=frontier,
+            epic_list=[1, 10],
+            epic_stories_loader=_loader(stories),
+        )
+        assert gaps3 == []

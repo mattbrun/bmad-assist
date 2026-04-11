@@ -88,13 +88,15 @@ class ValidateStoryHandler(BaseHandler):
             if epic_num is None or story_num_str is None:
                 return PhaseResult.fail("Cannot validate: missing epic_num or story_num in state")
 
-            _m = re.match(r"(\d+)", story_num_str)
-            story_num = int(_m.group(1)) if _m else 1
+            story_num: int | str = story_num_str
+            _m = re.match(r"(\d+)$", story_num_str)
+            if _m:
+                story_num = int(_m.group(1))
 
             logger.info(
                 "Starting validation phase for story %s.%s",
                 epic_num,
-                story_num,
+                story_num_str,
             )
 
             # Pre-compile workflow patches BEFORE entering the async event loop.
