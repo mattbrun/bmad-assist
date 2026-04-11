@@ -682,6 +682,7 @@ def _check_backfill(
             "current_story": next_story,
             "current_phase": Phase.CREATE_STORY,
             "code_review_rework_count": 0,
+            "epic_setup_complete": True,  # Skip setup for backfill epics
             "updated_at": now,
         }
     )
