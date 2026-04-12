@@ -1074,6 +1074,23 @@ def _run_loop_body(
                 )
                 save_state(state, state_path)
 
+        # Safety check: if current phase is a setup/teardown phase (not a story phase),
+        # the state was corrupted (e.g., killed during TEA setup). Reset to CREATE_STORY.
+        story_phase_set_check = {Phase(p) for p in loop_config.story}
+        if state.current_phase and state.current_phase not in story_phase_set_check:
+            logger.warning(
+                "State has non-story phase %s (likely interrupted during setup/teardown). "
+                "Resetting to CREATE_STORY.",
+                state.current_phase.name,
+            )
+            state = state.model_copy(
+                update={
+                    "current_phase": Phase(loop_config.story[0]),
+                    "updated_at": datetime.now(UTC).replace(tzinfo=None),
+                }
+            )
+            save_state(state, state_path)
+
         # Main loop - runs until project complete or guardian halt
         while True:
             # Dashboard integration: Check for log level changes from control file
