@@ -362,28 +362,31 @@ class CodeReviewSynthesisCompiler:
             source_files = service.collect_files(file_list_paths, git_diff_files)
 
             # Hard cap: max 3 files for synthesis (prioritized by score).
-            # Instead of dropping overflow, compress markdown in place
-            # (preserving synthesis-relevant content) and drop only
-            # source code (LLM summarization is unsafe for code).
+            # cap_synthesis_source_files compresses EVERY file above the
+            # size threshold (markdown AND source code) rather than
+            # dropping overflow — synthesis reasons over reviewer output
+            # and doesn't write code, so compression is safe. Each
+            # compressed file carries an annotation telling the synthesis
+            # agent to read the real file via tools if it needs
+            # byte-exact detail for verifying a reviewer claim.
             max_synthesis_files = 3
             original_count = len(source_files)
-            if original_count > max_synthesis_files:
-                cap = cap_synthesis_source_files(
-                    source_files,
-                    max_files=max_synthesis_files,
-                    project_root=context.project_root,
+            cap = cap_synthesis_source_files(
+                source_files,
+                max_files=max_synthesis_files,
+                project_root=context.project_root,
+            )
+            source_files = cap.files
+            if cap.compressed_paths or cap.dropped_paths:
+                logger.info(
+                    "Synthesis source files capped: included=%d "
+                    "(compressed=%d) dropped=%d (input=%d, max=%d)",
+                    len(cap.included_paths),
+                    len(cap.compressed_paths),
+                    len(cap.dropped_paths),
+                    original_count,
+                    max_synthesis_files,
                 )
-                source_files = cap.files
-                if cap.compressed_paths or cap.dropped_paths:
-                    logger.info(
-                        "Synthesis source files capped: kept=%d "
-                        "compressed=%d dropped=%d (input=%d, max=%d)",
-                        len(cap.kept_paths),
-                        len(cap.compressed_paths),
-                        len(cap.dropped_paths),
-                        original_count,
-                        max_synthesis_files,
-                    )
 
             files.update(source_files)
             if source_files:
