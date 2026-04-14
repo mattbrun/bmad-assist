@@ -359,6 +359,19 @@ _SECTION_HEADER_PATTERN = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# Numbered finding heading pattern:
+#   ### CRITICAL-1: Missing active_instance_index() in CoreConnection Trait
+#   ### IMPORTANT-3: ConnectionManager file placement
+#   ### MINOR-2: View mode label hardcoded
+# Adversarial validation reports often group findings under a section
+# heading like "## 3. Critical Issues" but list each finding as its own
+# numbered subheading rather than bullet points. Each match is one
+# finding; the description is everything after the colon.
+_NUMBERED_FINDING_HEADING_PATTERN = re.compile(
+    rf"^#{{2,5}}\s+({_ALL_SEVERITY_LABELS})-\d+\s*:?\s*(.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 # Pattern for CLEAN PASS count
 # | 🟢 CLEAN PASS | 5 |
 _CLEAN_PASS_TABLE_PATTERN = re.compile(r"\|\s*🟢\s*CLEAN PASS\s*\|\s*(\d+)\s*\|", re.IGNORECASE)
@@ -413,8 +426,11 @@ _SCORE_FRACTION_PATTERN = re.compile(
 # Evidence Score when there's a recognizable Evidence Score / Score Card
 # heading in the report. Avoids misinterpreting unrelated "Total: X/Y"
 # lines (e.g. test pass rates) as the report's verdict.
+#
+# Accepts an optional numeric prefix like "11." so reports that use
+# numbered sections (e.g. "## 11. Evidence Score") still match.
 _EVIDENCE_SCORE_HEADING_PATTERN = re.compile(
-    r"^#{2,5}\s*Evidence\s+Score(?:\s+Card)?\s*$",
+    r"^#{2,5}\s*(?:\d+(?:\.\d+)*\.?\s*)?Evidence\s+Score(?:\s+Card)?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -511,6 +527,34 @@ def parse_evidence_findings(
                 )
             except (ValueError, KeyError) as e:
                 parse_warnings.append(f"Failed to parse bullet finding: {e}")
+
+    # Try numbered finding headings (### CRITICAL-1: description).
+    # Run BEFORE the section-header fallback because numbered headings are
+    # more specific — the broader section-header pattern would otherwise
+    # match the section title alone (e.g. "## 3. Critical Issues") and
+    # then look for bullets that don't exist, producing zero findings.
+    if not findings:
+        numbered_matches = _NUMBERED_FINDING_HEADING_PATTERN.findall(content)
+        for severity_str, description in numbered_matches:
+            try:
+                severity = _resolve_severity(severity_str)
+                # Use the canonical bmad weight for this severity
+                # (CRITICAL=3, IMPORTANT=1, MINOR=0.3) — validators using
+                # this format don't put a per-finding score on the heading.
+                score = SEVERITY_SCORES[severity.value]
+                findings.append(
+                    EvidenceFinding(
+                        severity=severity,
+                        score=score,
+                        description=description.strip(),
+                        source="",
+                        validator_id=validator_id,
+                    )
+                )
+            except (ValueError, KeyError) as e:
+                parse_warnings.append(
+                    f"Failed to parse numbered finding heading: {e}"
+                )
 
     # Try section-header fallback if no findings yet
     if not findings:

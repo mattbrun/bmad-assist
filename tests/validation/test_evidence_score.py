@@ -692,3 +692,140 @@ class TestEvidenceScoreCardFraction:
         assert report.total_score == pytest.approx(0.0, abs=0.05)
         # Score 0.0 falls between -3 and 4 → PASS verdict band
         assert report.verdict == Verdict.PASS
+
+
+# =============================================================================
+# Numbered finding headings (validator A from 10.8 run)
+# =============================================================================
+#
+# Some adversarial validation reports list each finding as its own
+# numbered subheading: ``### CRITICAL-1: description``. Section-header
+# parser missed these because it only matches headings without the
+# numbered suffix (CRITICAL, not CRITICAL-1) and then scans for bullets.
+
+
+class TestParseNumberedFindingHeadings:
+    """Parser must accept ``### SEVERITY-N: description`` heading style."""
+
+    def test_parses_critical_important_minor_numbered_headings(self) -> None:
+        """Real shape from validation-10-8-a: numbered subheadings under
+        ``## 3. Critical Issues`` etc."""
+        content = """\
+## 3. Critical Issues
+
+### CRITICAL-1: Missing `active_instance_index()` in CoreConnection Trait
+
+Some prose body explaining the issue.
+
+### CRITICAL-2: `unwrap()` on RwLock Violates Project Rule — 11 Instances
+
+More prose.
+
+## 4. Important Issues
+
+### IMPORTANT-1: Story Too Large for Single Sprint
+
+Body.
+
+### IMPORTANT-2: ConnectionManager File Placement Contradicts Architecture
+
+Body.
+
+## 5. Minor Issues
+
+### MINOR-1: AC1 vs Out of Scope Contradiction
+"""
+        report = parse_evidence_findings(content, "validator-a")
+        assert report is not None, "should not drop a numbered-finding report"
+        # 2 CRITICAL + 2 IMPORTANT + 1 MINOR = 5 findings
+        assert len(report.findings) == 5
+        criticals = [f for f in report.findings if f.severity == Severity.CRITICAL]
+        importants = [f for f in report.findings if f.severity == Severity.IMPORTANT]
+        minors = [f for f in report.findings if f.severity == Severity.MINOR]
+        assert len(criticals) == 2
+        assert len(importants) == 2
+        assert len(minors) == 1
+        # Bmad weights: 2*3 + 2*1 + 1*0.3 = 8.3 → REJECT (≥6)
+        assert report.total_score == pytest.approx(8.3, abs=0.05)
+        assert report.verdict == Verdict.REJECT
+
+    def test_numbered_heading_description_extracted(self) -> None:
+        """The description from each heading is captured."""
+        content = """\
+### CRITICAL-1: Buffer overflow in parser
+Body line.
+
+### IMPORTANT-2: API rate limit not enforced
+Body line.
+"""
+        report = parse_evidence_findings(content, "validator-x")
+        assert report is not None
+        descriptions = [f.description for f in report.findings]
+        assert "Buffer overflow in parser" in descriptions
+        assert "API rate limit not enforced" in descriptions
+
+    def test_numbered_heading_runs_before_section_header(self) -> None:
+        """Numbered finding parser must take precedence over section header.
+
+        A report with both ``## CRITICAL Findings`` and individual
+        ``### CRITICAL-N`` headings must produce one finding per
+        numbered heading, NOT use section-header bullet extraction.
+        """
+        content = """\
+## CRITICAL Findings
+
+### CRITICAL-1: First issue
+### CRITICAL-2: Second issue
+### CRITICAL-3: Third issue
+"""
+        report = parse_evidence_findings(content, "validator-y")
+        assert report is not None
+        # Should be 3 findings (one per numbered heading), not zero or 1
+        assert len(report.findings) == 3
+        assert all(f.severity == Severity.CRITICAL for f in report.findings)
+
+    def test_high_medium_low_aliases_in_numbered_headings(self) -> None:
+        """Aliases (HIGH→CRITICAL, MEDIUM→IMPORTANT, LOW→MINOR) work in numbered form."""
+        content = """\
+### HIGH-1: Critical aliased
+### MEDIUM-1: Important aliased
+### LOW-1: Minor aliased
+"""
+        report = parse_evidence_findings(content, "validator-z")
+        assert report is not None
+        assert len(report.findings) == 3
+        sevs = sorted(f.severity for f in report.findings)
+        assert Severity.CRITICAL in sevs
+        assert Severity.IMPORTANT in sevs
+        assert Severity.MINOR in sevs
+
+    def test_numbered_heading_skipped_when_table_findings_present(self) -> None:
+        """If a structured finding table is present, that wins over numbered headings."""
+        content = """\
+| 🔴 CRITICAL | Buffer overflow | parser.c:42 | +3 |
+
+### MINOR-1: Should not be counted (table strategy already produced findings)
+"""
+        report = parse_evidence_findings(content, "validator-w")
+        assert report is not None
+        # Only the table finding, not the numbered MINOR.
+        assert len(report.findings) == 1
+        assert report.findings[0].severity == Severity.CRITICAL
+
+
+class TestEvidenceScoreHeadingAcceptsNumberedPrefix:
+    """The score-card heading guard must accept numbered section prefixes."""
+
+    def test_numbered_prefix_in_heading_recognized(self) -> None:
+        """``## 11. Evidence Score`` triggers the score-card fraction strategy."""
+        content = """\
+## 11. Evidence Score
+
+| Category | Score | Max | Notes |
+|----------|-------|-----|-------|
+| INVEST | 14/18 | 18 | |
+| **Total** | **43/55** | **55** | |
+"""
+        report = parse_evidence_findings(content, "validator-num")
+        assert report is not None
+        assert report.total_score == pytest.approx(2.2, abs=0.1)
