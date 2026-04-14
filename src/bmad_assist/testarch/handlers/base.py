@@ -571,7 +571,7 @@ class TestarchBaseHandler(BaseHandler):
 
     def _resolve_testarch_fallback(
         self, primary_provider_name: str
-    ) -> "tuple[Callable[..., ProviderResult] | None, str | None, str | None]":
+    ) -> tuple[Callable[..., ProviderResult] | None, str | None, str | None]:
         """Pick a sensible fallback callable for testarch provider invocations.
 
         Testarch phases (ATDD, test_review, trace, NFR assess, etc.) run
