@@ -52,7 +52,7 @@ from bmad_assist.core.config.models.providers import (
     MultiProviderConfig,
     get_phase_provider_config,
 )
-from bmad_assist.core.exceptions import BmadAssistError, CompilerError
+from bmad_assist.core.exceptions import BmadAssistError, CompilerError, ProviderError
 from bmad_assist.core.extraction import CODE_REVIEW_MARKERS, extract_report
 from bmad_assist.core.io import get_original_cwd, save_prompt
 from bmad_assist.core.loop.dashboard_events import (
@@ -475,7 +475,21 @@ async def _invoke_reviewer(
         logger.warning(error_msg)
         return reviewer_id, None, None, error_msg
 
+    except ProviderError as e:
+        # Expected operational failure from the provider layer (auth
+        # error, rate limit, non-zero exit, timeout, etc.). The error
+        # message already carries the diagnostic from stderr, and the
+        # Python stack trace through asyncio/retry/provider adds no
+        # information the operator can act on. Log cleanly without
+        # exc_info so multi-LLM parallel runs don't drown the log in
+        # duplicate tracebacks on a provider-wide outage.
+        error_msg = f"Reviewer {reviewer_id} failed: {e}"
+        logger.warning(error_msg)
+        return reviewer_id, None, None, error_msg
+
     except Exception as e:
+        # Unexpected exception (TypeError, AttributeError, etc.) —
+        # likely indicates a bmad-assist bug. Keep the full traceback.
         error_msg = f"Reviewer {reviewer_id} failed: {e}"
         logger.warning(error_msg, exc_info=True)
         return reviewer_id, None, None, error_msg
