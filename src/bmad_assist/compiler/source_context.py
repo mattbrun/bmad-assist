@@ -1011,6 +1011,189 @@ def _parse_git_stat(stat_output: str) -> list[tuple[str, int]]:
     return result
 
 
+# =============================================================================
+# Synthesis source file capping with markdown compression
+# =============================================================================
+#
+# Synthesis workflows (validate_story_synthesis, code_review_synthesis)
+# historically capped source files at 3 and dropped the overflow to
+# protect the LLM prompt budget. That was unnecessarily lossy for
+# markdown docs which can be safely compressed without losing the core
+# information reviewers need.
+#
+# This helper is the synthesis-side counterpart to
+# ``core.loop.handlers.base._try_compress_markdown_file_block`` — same
+# policy, different input shape (raw path→content dict vs XML blocks):
+#
+# - First ``max_files`` entries (highest-scored) are kept verbatim.
+# - For the tail, markdown files (.md/.markdown/.mdx) are compressed
+#   via the existing LLM compression helper and kept in the result.
+# - Source code is dropped — LLM summarization of code is unsafe for
+#   synthesis phases that compare implementation against the story.
+# - Very small markdown files (below _SYNTH_MIN_COMPRESSIBLE_TOKENS)
+#   are dropped outright; the LLM call overhead isn't worth the
+#   handful of tokens saved.
+
+_SYNTH_MARKDOWN_EXTENSIONS: tuple[str, ...] = (".md", ".markdown", ".mdx")
+_SYNTH_MIN_COMPRESSIBLE_TOKENS = 500
+_SYNTH_COMPRESSION_TARGET_RATIO = 0.5
+_SYNTH_MIN_COMPRESSION_TARGET_TOKENS = 200
+
+
+def _synth_doc_type_from_path(path: str) -> str:
+    """Build a cache key for per-path synthesis source compression.
+
+    Namespaced with ``synthsrc-`` so cache files don't collide with
+    strategic doc caches (``ux-*``, ``prd-*``) or the base-handler
+    trim-path cache (``srcmd-*``).
+    """
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]+", "-", path).strip("-")
+    return f"synthsrc-{sanitized}"
+
+
+@dataclass(frozen=True)
+class SynthesisCapResult:
+    """Outcome of capping a dict of synthesis source files.
+
+    Attributes:
+        files: Resulting ``path → content`` dict. Entries present in
+            the input beyond ``max_files`` that were compressed appear
+            with their compressed (and annotated) content here.
+        kept_paths: Paths that survived unchanged.
+        compressed_paths: Paths whose content was compressed in place.
+        dropped_paths: Paths that were removed entirely (source code
+            overflow or markdown below the compression threshold).
+
+    """
+
+    files: dict[str, str]
+    kept_paths: list[str]
+    compressed_paths: list[str]
+    dropped_paths: list[str]
+
+
+def cap_synthesis_source_files(
+    source_files: dict[str, str],
+    *,
+    max_files: int,
+    project_root: Path | None,
+) -> SynthesisCapResult:
+    """Cap a synthesis source-file dict with compression-aware overflow.
+
+    Preserves the first ``max_files`` entries (by input order — callers
+    should pass files already ranked by score). For entries beyond the
+    cap: markdown is compressed and kept, source code is dropped.
+
+    Args:
+        source_files: Mapping of path → raw content, ordered by
+            relevance score (highest first). Typically the output of
+            :class:`SourceContextService.collect_files`.
+        max_files: Number of entries to preserve unchanged at the top.
+        project_root: Project root for the compression disk cache.
+            When None, compression is skipped entirely (all overflow
+            files are dropped — keeps the legacy test path working).
+
+    Returns:
+        SynthesisCapResult with the capped dict and per-category
+        path lists for logging/debugging.
+
+    """
+    if max_files < 0:
+        raise ValueError(f"max_files must be >= 0, got {max_files}")
+
+    if len(source_files) <= max_files:
+        return SynthesisCapResult(
+            files=dict(source_files),
+            kept_paths=list(source_files.keys()),
+            compressed_paths=[],
+            dropped_paths=[],
+        )
+
+    items = list(source_files.items())
+    kept_items = items[:max_files]
+    overflow_items = items[max_files:]
+
+    result_files: dict[str, str] = dict(kept_items)
+    compressed_paths: list[str] = []
+    dropped_paths: list[str] = []
+
+    # Lazy import to avoid circular deps: strategic_context imports
+    # several compiler modules during its own initialization.
+    _compress_or_truncate = None
+    try:
+        from bmad_assist.compiler.strategic_context import _compress_or_truncate as _c
+
+        _compress_or_truncate = _c
+    except ImportError as e:  # pragma: no cover - defensive
+        logger.debug("Synthesis compression unavailable: %s", e)
+
+    for path, content in overflow_items:
+        is_markdown = path.lower().endswith(_SYNTH_MARKDOWN_EXTENSIONS)
+
+        if not is_markdown or project_root is None or _compress_or_truncate is None:
+            dropped_paths.append(path)
+            continue
+
+        original_tokens = estimate_tokens(content)
+        if original_tokens < _SYNTH_MIN_COMPRESSIBLE_TOKENS:
+            # Too small to be worth the LLM round-trip.
+            dropped_paths.append(path)
+            continue
+
+        target_tokens = max(
+            int(original_tokens * _SYNTH_COMPRESSION_TARGET_RATIO),
+            _SYNTH_MIN_COMPRESSION_TARGET_TOKENS,
+        )
+
+        try:
+            compressed_content, compressed_tokens = _compress_or_truncate(
+                content,
+                target_tokens,
+                _synth_doc_type_from_path(path),
+                project_root,
+            )
+        except Exception as e:  # pragma: no cover - helper is fail-safe
+            logger.debug("Synthesis compression failed for %s: %s", path, e)
+            dropped_paths.append(path)
+            continue
+
+        # If compression didn't actually shrink, dropping is strictly
+        # better (saves tokens AND avoids a misleading "[compressed]"
+        # annotation on content that wasn't really compressed).
+        if len(compressed_content) >= len(content):
+            logger.debug(
+                "Synthesis compression no-op for %s (%d → %d chars), dropping",
+                path,
+                len(content),
+                len(compressed_content),
+            )
+            dropped_paths.append(path)
+            continue
+
+        annotated = (
+            f"[note: this file was compressed from ~{original_tokens} to "
+            f"~{compressed_tokens} tokens to fit the synthesis prompt budget. "
+            f"Request the full file via your file tools if you need exact "
+            f"content.]\n\n"
+            + compressed_content
+        )
+        result_files[path] = annotated
+        compressed_paths.append(path)
+        logger.info(
+            "Synthesis compress: shrank '%s' from %d to ~%d tokens",
+            path,
+            original_tokens,
+            len(annotated) // 4,
+        )
+
+    return SynthesisCapResult(
+        files=result_files,
+        kept_paths=[p for p, _ in kept_items],
+        compressed_paths=compressed_paths,
+        dropped_paths=dropped_paths,
+    )
+
+
 def get_hunk_ranges_for_file(project_root: Path, path: str) -> list[tuple[int, int]]:
     """Get hunk line ranges from git diff for a specific file.
 
