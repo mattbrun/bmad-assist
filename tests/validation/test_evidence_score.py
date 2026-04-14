@@ -584,3 +584,111 @@ class TestAllValidatorsFailedError:
         """Test error message content."""
         error = AllValidatorsFailedError("All validators failed")
         assert "All validators failed" in str(error)
+
+
+# =============================================================================
+# Score-Card Fraction Parsing (Fix #5)
+# =============================================================================
+#
+# Real reports the parser used to drop on the floor. Each test recreates
+# the failing format from a real bmad-assist run and asserts the parser
+# now derives a sensible Evidence Score from the score-card fraction
+# instead of returning None.
+
+
+class TestEvidenceScoreCardFraction:
+    """Parser must extract score from real ``## Evidence Score [Card]`` reports."""
+
+    def test_parses_total_fraction_from_score_card(self) -> None:
+        """Validation report with ``## Evidence Score Card`` and Total row."""
+        # Shape from validation-10-7-c report (one of the failing previews
+        # quoted in the run logs). 43/55 → 21.8% missed → score ~2.2 → PASS.
+        content = """\
+## Evidence Score Card
+
+| Category | Score | Max | Notes |
+|----------|-------|-----|-------|
+| INVEST Compliance | 14/18 | 18 | 2 criteria have IMPORTANT gaps |
+| AC Completeness | 7/9 | 9 | AC3 ambiguity |
+| Hidden Dependencies | 5/6 | 6 | jiff API |
+| Estimation Realism | 3/4 | 4 | Snapshot cascade |
+| Technical Alignment | 5/6 | 6 | Duplicate type models |
+| Disaster Prevention | 9/12 | 12 | 3 issues |
+| **Total** | **43/55** | **55** | |
+
+**Evidence Score:** 43/55 → **78%**
+**Verdict:** ⚠️ **CONDITIONAL PASS**
+"""
+        report = parse_evidence_findings(content, "validator-c")
+        assert report is not None, "should not drop a report with a score-card"
+        # 43/55 → 12 missed / 55 = 0.218 * 10 ≈ 2.2
+        assert report.total_score == pytest.approx(2.2, abs=0.1)
+        assert report.verdict == Verdict.PASS
+
+    def test_parses_total_fraction_from_evidence_score_heading(self) -> None:
+        """Code-review report with ``## Evidence Score`` and ``**Total: 58/100**``."""
+        # Shape from code-review-10-4d-b. 58/100 → 42% missed → score ~4.2 →
+        # MAJOR_REWORK.
+        content = """\
+## Evidence Score
+
+| Criterion | Weight | Score | Notes |
+|-----------|--------|-------|-------|
+| All ACs have test coverage | 20 | 14/20 | Acceptance tests for AC1-AC6 |
+| Code compiles | 15 | 15/15 | |
+| Documentation | 10 | 0/10 | Stale docs |
+
+**Total: 58/100**
+"""
+        report = parse_evidence_findings(content, "validator-b")
+        assert report is not None
+        assert report.total_score == pytest.approx(4.2, abs=0.1)
+        assert report.verdict == Verdict.MAJOR_REWORK
+
+    def test_inline_bold_evidence_score_is_parsed(self) -> None:
+        """``**Evidence Score:** 3.5`` (bold-wrapped inline) should parse."""
+        content = """\
+## Summary
+
+**Evidence Score:** 3.5
+**Verdict:** PASS
+"""
+        report = parse_evidence_findings(content, "validator-a")
+        assert report is not None
+        assert report.total_score == pytest.approx(3.5, abs=0.05)
+
+    def test_score_card_without_heading_not_misinterpreted(self) -> None:
+        """A bare ``Total: 5/10`` line without an Evidence Score heading.
+
+        Must NOT be parsed as Evidence Score — protects against false
+        positives matching arbitrary "Total: X/Y" lines (e.g. test
+        coverage tables).
+        """
+        content = """\
+## Test Pass Rate
+
+| Suite | Pass / Total |
+|-------|--------------|
+| unit  | 5/10         |
+
+**Total: 5/10**
+"""
+        report = parse_evidence_findings(content, "validator-x")
+        # No findings, no clean passes, no Evidence Score heading → drop.
+        assert report is None
+
+    def test_perfect_score_card_yields_pass(self) -> None:
+        """100% score-card → 0.0 → EXCELLENT/PASS verdict band."""
+        content = """\
+## Evidence Score Card
+
+| Category | Score | Max |
+|----------|-------|-----|
+| Coverage | 10/10 | 10 |
+| **Total** | **10/10** | **10** |
+"""
+        report = parse_evidence_findings(content, "validator-z")
+        assert report is not None
+        assert report.total_score == pytest.approx(0.0, abs=0.05)
+        # Score 0.0 falls between -3 and 4 → PASS verdict band
+        assert report.verdict == Verdict.PASS

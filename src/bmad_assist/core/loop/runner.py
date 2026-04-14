@@ -1074,12 +1074,23 @@ def _run_loop_body(
                 )
                 save_state(state, state_path)
 
-        # Safety check: if current phase is a setup/teardown phase (not a story phase),
-        # the state was corrupted (e.g., killed during TEA setup). Reset to CREATE_STORY.
-        story_phase_set_check = {Phase(p) for p in loop_config.story}
-        if state.current_phase and state.current_phase not in story_phase_set_check:
+        # Safety check: if current phase is an epic_setup phase, the state was
+        # corrupted (e.g., killed during TEA setup) — main loop can't advance
+        # from a setup phase, so reset to CREATE_STORY.
+        #
+        # NOTE: teardown phases (RETROSPECTIVE, TRACE, etc.) are legitimate
+        # resume points after the last story of an epic completes. The main
+        # loop dispatches them via handle_story/epic_completion when it sees
+        # them, so we MUST NOT reset them — doing so would skip teardown
+        # entirely and mis-restart the just-finished epic from CREATE_STORY.
+        epic_setup_phase_set = (
+            {Phase(p) for p in loop_config.epic_setup}
+            if loop_config.epic_setup
+            else set()
+        )
+        if state.current_phase and state.current_phase in epic_setup_phase_set:
             logger.warning(
-                "State has non-story phase %s (likely interrupted during setup/teardown). "
+                "State has setup phase %s (likely interrupted during epic setup). "
                 "Resetting to CREATE_STORY.",
                 state.current_phase.name,
             )

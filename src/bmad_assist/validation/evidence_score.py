@@ -369,11 +369,53 @@ _CLEAN_PASS_TEXT_PATTERN = re.compile(
 )
 
 # Pattern for total Evidence Score
-# | **Evidence Score** | **3.5** | or Evidence Score: 3.5
+# Matches:
+#   Evidence Score: 3.5
+#   **Evidence Score:** 3.5
+#   | **Evidence Score** | **3.5** |
+# The `\*{0,2}` parts allow optional bold wrapping in any of the common
+# positions reviewers actually emit. Parser uses .search() and picks the
+# first non-None group.
+#
+# The trailing `(?![\d/%])` negative lookahead is critical: it prevents
+# the regex from greedily backtracking and matching a partial digit out
+# of fraction notation like ``Evidence Score: 43/55`` (where the regex
+# would otherwise match `4` and produce parsed_score=4.0). Fractions are
+# handled separately by _SCORE_FRACTION_PATTERN below.
 _EVIDENCE_SCORE_PATTERN = re.compile(
-    r"(?:Evidence Score:?\s*\*?\*?(-?\d+(?:\.\d+)?)\*?\*?"
-    r"|\|\s*\*?\*?Evidence Score\*?\*?\s*\|\s*\*?\*?(-?\d+(?:\.\d+)?)\*?\*?\s*\|)",
+    r"(?:"
+    # Inline form: optionally wrapped in **, with optional ** after the
+    # colon (e.g. **Evidence Score:** 3.5).
+    r"\*{0,2}Evidence Score\*{0,2}\s*:?\s*\*{0,2}\s*(-?\d+(?:\.\d+)?)\*{0,2}(?![\d/%])"
+    r"|"
+    # Table form: | **Evidence Score** | **3.5** |
+    r"\|\s*\*{0,2}Evidence Score\*{0,2}\s*\|\s*\*{0,2}(-?\d+(?:\.\d+)?)\*{0,2}\s*\|"
+    r")",
     re.IGNORECASE,
+)
+
+# Pattern for score-card "Total" or "Evidence Score" lines that report a
+# fraction (achieved/maximum) rather than a single Evidence Score number.
+# Real-world reports the parser was failing on:
+#
+#   **Total: 58/100**
+#   | **Total** | **43/55** | **55** | |
+#   **Evidence Score:** 43/55 → **78%**
+#
+# Capture groups: 1=achieved, 2=maximum.
+_SCORE_FRACTION_PATTERN = re.compile(
+    r"\*{0,2}(?:Total|Evidence Score)\*{0,2}\s*[:|]?\s*\*{0,2}\s*"
+    r"(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*\*{0,2}",
+    re.IGNORECASE,
+)
+
+# Sanity guard for _SCORE_FRACTION_PATTERN: only treat a fraction as an
+# Evidence Score when there's a recognizable Evidence Score / Score Card
+# heading in the report. Avoids misinterpreting unrelated "Total: X/Y"
+# lines (e.g. test pass rates) as the report's verdict.
+_EVIDENCE_SCORE_HEADING_PATTERN = re.compile(
+    r"^#{2,5}\s*Evidence\s+Score(?:\s+Card)?\s*$",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -512,6 +554,49 @@ def parse_evidence_findings(
     score_match = _EVIDENCE_SCORE_PATTERN.search(content)
     if score_match:
         parsed_score = float(score_match.group(1) or score_match.group(2))
+
+    # Score-card fraction fallback: when the report uses a "Total: N/M" or
+    # "Evidence Score: N/M" line under an "## Evidence Score [Card]" heading,
+    # convert the missed-percentage to a bmad Evidence Score on the 0..10
+    # scale so the existing verdict thresholds (>=6 REJECT, 4-6 REWORK, <=3
+    # PASS) line up with what the reviewer actually said.
+    #
+    # Examples:
+    #   58/100 → 42% missed → score ≈ 4.2 → MAJOR_REWORK
+    #   43/55  → ~22% missed → score ≈ 2.2 → PASS
+    #
+    # Only fires when no other strategy yielded findings or a parsed score,
+    # AND when the report has a recognizable Evidence Score heading (see
+    # _EVIDENCE_SCORE_HEADING_PATTERN) — protects against false positives.
+    if (
+        not findings
+        and clean_passes == 0
+        and parsed_score is None
+        and _EVIDENCE_SCORE_HEADING_PATTERN.search(content)
+    ):
+        frac_match = _SCORE_FRACTION_PATTERN.search(content)
+        if frac_match:
+            try:
+                achieved = float(frac_match.group(1))
+                maximum = float(frac_match.group(2))
+                if maximum > 0 and achieved <= maximum:
+                    missed_ratio = (maximum - achieved) / maximum
+                    parsed_score = round(missed_ratio * 10.0, 1)
+                    parse_warnings.append(
+                        f"Evidence Score derived from score-card fraction "
+                        f"{achieved:g}/{maximum:g} → {parsed_score}"
+                    )
+                    logger.info(
+                        "Evidence Score from %s score-card: %g/%g → %.1f",
+                        validator_id,
+                        achieved,
+                        maximum,
+                        parsed_score,
+                    )
+            except (ValueError, ZeroDivisionError) as e:
+                parse_warnings.append(
+                    f"Failed to parse score-card fraction: {e}"
+                )
 
     # If no findings and no clean passes and no score, return None
     if not findings and clean_passes == 0 and parsed_score is None:

@@ -87,6 +87,10 @@ class ToolGuardConfig(BaseModel):
     Attributes:
         max_total_calls: Hard cap on total tool calls per invocation.
         max_interactions_per_file: Max combined read+write+edit per file path.
+        max_interactions_per_file_trimmed: Elevated per-file cap for files
+            that were budget-trimmed out of the prompt context. Such files
+            must be read via tool calls, so they need a higher cap. None
+            means "auto: 2x max_interactions_per_file".
         max_calls_per_minute: Sliding-window rate cap (calls per 60s).
 
     """
@@ -105,10 +109,82 @@ class ToolGuardConfig(BaseModel):
         description="Max combined read+write+edit per file path",
         json_schema_extra={"security": "safe", "ui_widget": "number"},
     )
+    max_interactions_per_file_trimmed: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Elevated per-file cap for files that were budget-trimmed out of "
+            "the prompt context (model must read them via tools). None = auto, "
+            "uses 2x max_interactions_per_file."
+        ),
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
     max_calls_per_minute: int = Field(
         default=90,
         ge=1,
         description="Sliding-window rate cap (calls per 60s)",
+        json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+
+    def get_elevated_file_cap(self) -> int:
+        """Resolve the elevated per-file cap.
+
+        Returns max_interactions_per_file_trimmed when set, otherwise auto:
+        2 * max_interactions_per_file.
+
+        Returns:
+            Effective elevated per-file interaction cap.
+
+        """
+        if self.max_interactions_per_file_trimmed is not None:
+            return self.max_interactions_per_file_trimmed
+        return self.max_interactions_per_file * 2
+
+
+class GitConfig(BaseModel):
+    """Git diff handling configuration.
+
+    Controls how bmad-assist filters and validates diffs for code review.
+
+    Attributes:
+        garbage_exclude_paths: Additional file paths or glob-style patterns
+            that the diff-quality validator must NOT classify as "garbage".
+            Use this to whitelist tracked files like ".opencode/package-lock.json"
+            that legitimately appear in your diffs.
+        garbage_extra_patterns: Additional regex patterns to classify as
+            garbage (appended to the built-in list). Use this when your repo
+            generates files the defaults don't cover.
+        max_garbage_ratio: Maximum allowed ratio of garbage files in a diff
+            before the validator flags it (0.0-1.0).
+
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    garbage_exclude_paths: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Repo-relative paths or glob patterns to whitelist from garbage "
+            "detection. E.g. ['.opencode/package-lock.json', 'vendor/*.lock']."
+        ),
+        json_schema_extra={"security": "safe", "ui_widget": "list"},
+    )
+    garbage_extra_patterns: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Additional regex patterns to classify as garbage (appended to "
+            "the built-in list)."
+        ),
+        json_schema_extra={"security": "safe", "ui_widget": "list"},
+    )
+    max_garbage_ratio: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Max ratio of garbage files in a diff before the validator flags "
+            "it. 0.0-1.0."
+        ),
         json_schema_extra={"security": "safe", "ui_widget": "number"},
     )
 
