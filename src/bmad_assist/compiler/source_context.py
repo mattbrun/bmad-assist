@@ -16,6 +16,7 @@ import ast
 import logging
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -1083,11 +1084,18 @@ class SynthesisCapResult:
     dropped_paths: list[str]
 
 
+# Signature of compiler.strategic_context._compress_or_truncate — declared
+# here so the synthesis helper can type-check without introducing a real
+# import-time dependency (strategic_context pulls in several compiler
+# modules, so we lazy-import it inside the caller).
+_CompressFn = Callable[[str, int, str, "Path | None"], tuple[str, int]]
+
+
 def _synthesis_compress_content(
     path: str,
     content: str,
     project_root: Path,
-    compress_fn: "object",
+    compress_fn: _CompressFn,
 ) -> str | None:
     """Compress a single synthesis source file if worth it.
 
@@ -1117,7 +1125,7 @@ def _synthesis_compress_content(
     )
 
     try:
-        compressed_content, compressed_tokens = compress_fn(  # type: ignore[operator]
+        compressed_content, compressed_tokens = compress_fn(
             content,
             target_tokens,
             _synth_doc_type_from_path(path),
@@ -1198,7 +1206,7 @@ def cap_synthesis_source_files(
 
     # Lazy import to avoid circular deps: strategic_context pulls in
     # several compiler modules during its own initialization.
-    compress_fn: object | None = None
+    compress_fn: _CompressFn | None = None
     if project_root is not None:
         try:
             from bmad_assist.compiler.strategic_context import (
