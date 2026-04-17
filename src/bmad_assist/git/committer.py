@@ -41,6 +41,44 @@ def is_git_enabled() -> bool:
     return os.environ.get("BMAD_GIT_COMMIT") == "1"
 
 
+# Default threshold for "large commit" warnings. Override via the
+# ``BMAD_GIT_WARN_LARGE_COMMITS_THRESHOLD`` env var. Set to 0 to disable
+# the warning entirely.
+_DEFAULT_LARGE_COMMIT_THRESHOLD = 100
+
+
+def _get_large_commit_threshold() -> int:
+    """Resolve the large-commit warning threshold from env, fall back safely.
+
+    Returns 0 when disabled (env var explicitly 0), the configured value
+    otherwise, or the default on invalid input.
+    """
+    raw = os.environ.get("BMAD_GIT_WARN_LARGE_COMMITS_THRESHOLD")
+    if raw is None:
+        return _DEFAULT_LARGE_COMMIT_THRESHOLD
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid BMAD_GIT_WARN_LARGE_COMMITS_THRESHOLD=%r (expected int), "
+            "using default %d",
+            raw,
+            _DEFAULT_LARGE_COMMIT_THRESHOLD,
+        )
+        return _DEFAULT_LARGE_COMMIT_THRESHOLD
+    return max(0, value)
+
+
+def _should_force_stage_all() -> bool:
+    """Escape hatch: force legacy ``git add -A`` behavior when set.
+
+    Preserves the original unconditional-stage-all semantics for users
+    who rely on it (e.g. workflows that create files outside the
+    excluded-prefix filter and still want them auto-committed).
+    """
+    return os.environ.get("BMAD_GIT_STAGE_ALL") == "1"
+
+
 def should_commit_phase(phase: Phase | None) -> bool:
     """Check if the given phase should trigger a commit."""
     return phase in COMMIT_PHASES
@@ -238,17 +276,39 @@ def _generate_conventional_message(
     return message
 
 
-def stage_all_changes(project_path: Path) -> bool:
-    """Stage all modified files for commit.
+def stage_all_changes(
+    project_path: Path,
+    paths: list[str] | None = None,
+) -> bool:
+    """Stage modified files for commit.
 
     Args:
         project_path: Path to git repository.
+        paths: Optional explicit list of repo-relative paths to stage.
+            When provided (and ``BMAD_GIT_STAGE_ALL`` is NOT set), runs
+            ``git add -- <paths>`` to stage only those files — aligning
+            with whatever filter the caller applied (typically
+            :func:`get_modified_files`' exclusion list). When ``paths``
+            is None OR the escape hatch is set, falls back to
+            ``git add -A`` (legacy "stage everything" behavior).
+            Empty list is treated as "nothing to stage" — returns True.
 
     Returns:
-        True if staging succeeded.
+        True if staging succeeded or was a no-op (empty path list).
 
     """
-    exit_code, _, stderr = _run_git(["add", "-A"], project_path)
+    force_all = _should_force_stage_all()
+
+    if paths is not None and not force_all:
+        if not paths:
+            # Nothing to stage — not an error. commit_changes() below
+            # will no-op via its "nothing to commit" path.
+            return True
+        # ``--`` separator protects against paths that start with ``-``.
+        exit_code, _, stderr = _run_git(["add", "--", *paths], project_path)
+    else:
+        exit_code, _, stderr = _run_git(["add", "-A"], project_path)
+
     if exit_code != 0:
         logger.error("Failed to stage changes: %s", stderr)
         return False
@@ -530,6 +590,27 @@ def auto_commit_phase(
         phase.value if phase else "unknown",
     )
 
+    # Approach A (safety net): warn when the number of files to commit
+    # crosses a threshold. Catches the symptom of "branch created from
+    # a dirty working tree captured 1000+ unrelated files" without
+    # changing staging behavior. Users see the warning and can decide
+    # whether to investigate before the commit goes through.
+    threshold = _get_large_commit_threshold()
+    if threshold > 0 and len(modified_files) > threshold:
+        preview = modified_files[:5]
+        logger.warning(
+            "Large auto-commit detected: %d files exceed threshold %d "
+            "(phase=%s). Sample: %s%s. If this is unexpected, check for "
+            "unrelated changes staged on this branch (e.g. leftover work "
+            "from main before branch creation). Set "
+            "BMAD_GIT_WARN_LARGE_COMMITS_THRESHOLD=0 to disable this warning.",
+            len(modified_files),
+            threshold,
+            phase.value if phase else "unknown",
+            preview,
+            ", ..." if len(modified_files) > len(preview) else "",
+        )
+
     # CRITICAL: Check if any story files are marked for deletion
     # This prevents accidental permanent deletion of story artifacts
     deleted_story_files = check_for_deleted_story_files(project_path)
@@ -544,15 +625,26 @@ def auto_commit_phase(
         # Return False to halt the workflow - this is a critical error
         return False
 
-    # Stage all changes
-    if not stage_all_changes(project_path):
+    # Approach B: scope staging to the exclusion-filtered list from
+    # get_modified_files(). Previously ``git add -A`` unconditionally
+    # staged everything the working tree had modified — including files
+    # that the exclusion filter already decided should NOT be part of
+    # the auto-commit (e.g. generated artifacts in _bmad-output/). The
+    # filter was only applied to the LOG message. Now it's also applied
+    # to the actual staging. Honors ``BMAD_GIT_STAGE_ALL=1`` escape
+    # hatch for users who need the legacy behavior.
+    if not stage_all_changes(project_path, paths=modified_files):
         return False
 
     # Auto-fix pre-commit hook issues (ESLint + typecheck)
     _run_precommit_fix(project_path)
 
-    # Re-stage after lint fixes (eslint --fix may have modified files)
-    stage_all_changes(project_path)
+    # Re-stage after lint fixes. lint may have modified files in ways
+    # that also modify files outside our original filter — re-query the
+    # filtered list and stage THOSE. This keeps the staging scope
+    # consistent with the filter across both stage passes.
+    refreshed_files = get_modified_files(project_path)
+    stage_all_changes(project_path, paths=refreshed_files)
 
     # Generate commit message
     message = generate_commit_message(
