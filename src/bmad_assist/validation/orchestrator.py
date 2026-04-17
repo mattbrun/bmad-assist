@@ -339,7 +339,12 @@ async def _invoke_validator(
 
         if tool_guard_config is not None:
             guard = ToolCallGuard(
-                max_total_calls=tool_guard_config.max_total_calls,
+                # Honor per-phase max_total_calls override (e.g. raised cap
+                # for heavy phases configured via
+                # tool_guard.max_total_calls_per_phase in bmad-assist.yaml).
+                max_total_calls=tool_guard_config.get_max_total_calls(
+                    "validate_story"
+                ),
                 max_interactions_per_file=tool_guard_config.max_interactions_per_file,
                 max_calls_per_minute=tool_guard_config.max_calls_per_minute,
             )

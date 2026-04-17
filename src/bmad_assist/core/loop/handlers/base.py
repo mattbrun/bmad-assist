@@ -1069,8 +1069,13 @@ class BaseHandler(ABC):
         # Pass budget-trimmed files into the guard so they get the elevated
         # per-file cap. Empty set = no elevation, behavior unchanged.
         elevated_paths = set(self._budget_trimmed_paths)
+        # Resolve max_total_calls per-phase. dev_story legitimately needs
+        # many more tool calls than e.g. validation phases, so users can
+        # set ``tool_guard.max_total_calls_per_phase: {dev_story: 600}``
+        # in config to raise just the phase that needs it.
+        phase_max_total_calls = tg.get_max_total_calls(self.phase_name)
         guard = ToolCallGuard(
-            max_total_calls=tg.max_total_calls,
+            max_total_calls=phase_max_total_calls,
             max_interactions_per_file=tg.max_interactions_per_file,
             max_calls_per_minute=tg.max_calls_per_minute,
             elevated_file_paths=elevated_paths,

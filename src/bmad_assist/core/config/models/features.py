@@ -86,6 +86,11 @@ class ToolGuardConfig(BaseModel):
 
     Attributes:
         max_total_calls: Hard cap on total tool calls per invocation.
+        max_total_calls_per_phase: Optional per-phase overrides for
+            ``max_total_calls``. e.g. ``{"dev_story": 600}``. Phases not
+            listed fall back to ``max_total_calls``. Useful because
+            dev_story legitimately needs more tool calls than e.g. a
+            validation or review phase.
         max_interactions_per_file: Max combined read+write+edit per file path.
         max_interactions_per_file_trimmed: Elevated per-file cap for files
             that were budget-trimmed out of the prompt context. Such files
@@ -102,6 +107,15 @@ class ToolGuardConfig(BaseModel):
         ge=1,
         description="Hard cap on total tool calls per invocation",
         json_schema_extra={"security": "safe", "ui_widget": "number"},
+    )
+    max_total_calls_per_phase: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Per-phase overrides for max_total_calls. Keys are phase names "
+            '(e.g. "dev_story", "create_story"), values are the total-call '
+            "cap for that phase. Phases not listed use max_total_calls."
+        ),
+        json_schema_extra={"security": "safe", "ui_widget": "object"},
     )
     max_interactions_per_file: int = Field(
         default=40,
@@ -139,6 +153,31 @@ class ToolGuardConfig(BaseModel):
         if self.max_interactions_per_file_trimmed is not None:
             return self.max_interactions_per_file_trimmed
         return self.max_interactions_per_file * 2
+
+    def get_max_total_calls(self, phase: str) -> int:
+        """Resolve max_total_calls for a specific phase.
+
+        Normalizes hyphens to underscores so callers can pass either
+        ``"dev_story"`` or ``"dev-story"``. Falls back to
+        ``max_total_calls`` for phases without an explicit override.
+
+        Args:
+            phase: Phase name (e.g. "dev_story", "code_review").
+
+        Returns:
+            Per-phase cap when configured, otherwise the global default.
+
+        """
+        normalized = phase.replace("-", "_")
+        override = self.max_total_calls_per_phase.get(normalized)
+        if override is not None:
+            if override < 1:
+                # Treat a misconfigured 0/negative as "use default" rather
+                # than throwing — the guard constructor validates >=1
+                # separately and would otherwise crash the run.
+                return self.max_total_calls
+            return override
+        return self.max_total_calls
 
 
 class GitConfig(BaseModel):
