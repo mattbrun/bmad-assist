@@ -402,3 +402,157 @@ class TestAutoCommitPhaseScoping:
         assert mock_stage.call_count == 2
         assert mock_stage.call_args_list[0].kwargs["paths"] == initial
         assert mock_stage.call_args_list[1].kwargs["paths"] == refreshed
+
+
+# =============================================================================
+# Porcelain -z parsing (Task #22: running.lock fix)
+# =============================================================================
+#
+# get_modified_files used line[3:] which assumed the documented
+# "XY filename" format (3-char prefix). But git porcelain v1 without -z
+# emits 2-char prefix "M filename" in some staged states, which made
+# line[3:] eat the first char of the filename. Resulting in:
+#   ".bmad-assist/running.lock" → "bmad-assist/running.lock"
+# which then caused "git add -- <path>" to fail with "pathspec did not
+# match any files". Fix: use --porcelain=v1 -z which guarantees a
+# stable 2-char XY + space + path + NUL layout.
+
+
+from bmad_assist.git.committer import (  # noqa: E402
+    _parse_porcelain_z,
+    get_modified_files,
+)
+
+
+class TestParsePorcelainZ:
+    """_parse_porcelain_z handles the stable -z format across git quirks."""
+
+    def test_standard_modified_records(self) -> None:
+        """Plain space-M (unstaged modified) records parse cleanly."""
+        stdout = " M .bmad-assist/state.yaml\x00 M packages/y3a-client\x00"
+        records = _parse_porcelain_z(stdout)
+        assert records == [
+            (" M", ".bmad-assist/state.yaml"),
+            (" M", "packages/y3a-client"),
+        ]
+
+    def test_staged_only_record(self) -> None:
+        """Staged modified with worktree unchanged: X='M', Y=' '.
+
+        Regression guard for the original bug: text porcelain could
+        emit "M filename" (collapsed trailing-space Y) but -z is
+        always "M  filename" (2-char XY + separator space).
+        """
+        stdout = "M  .bmad-assist/running.lock\x00"
+        records = _parse_porcelain_z(stdout)
+        assert records == [("M ", ".bmad-assist/running.lock")]
+
+    def test_untracked_record(self) -> None:
+        """Untracked files use ``??`` status."""
+        stdout = "?? .bmad-assist/prompts/new.md\x00"
+        records = _parse_porcelain_z(stdout)
+        assert records == [("??", ".bmad-assist/prompts/new.md")]
+
+    def test_rename_consumes_two_records(self) -> None:
+        """Rename/copy emit TWO NUL-separated entries: new then old."""
+        # Rename: R  new.md\x00old.md\x00
+        stdout = "R  packages/new.md\x00packages/old.md\x00"
+        records = _parse_porcelain_z(stdout)
+        # We keep the NEW path only (post-rename name).
+        assert records == [("R ", "packages/new.md")]
+
+    def test_copy_consumes_two_records(self) -> None:
+        """Copy (C status) follows the same rename format."""
+        stdout = "C  packages/copy.md\x00packages/orig.md\x00"
+        records = _parse_porcelain_z(stdout)
+        assert records == [("C ", "packages/copy.md")]
+
+    def test_multiple_mixed_records(self) -> None:
+        """Modified + untracked + rename in one call."""
+        stdout = (
+            " M src/a.py\x00"
+            "?? src/b.py\x00"
+            "R  src/new.py\x00src/old.py\x00"
+            " D src/gone.py\x00"
+        )
+        records = _parse_porcelain_z(stdout)
+        assert records == [
+            (" M", "src/a.py"),
+            ("??", "src/b.py"),
+            ("R ", "src/new.py"),
+            (" D", "src/gone.py"),
+        ]
+
+    def test_empty_stdout_returns_empty_list(self) -> None:
+        """No output → no records."""
+        assert _parse_porcelain_z("") == []
+
+    def test_path_with_dot_prefix_preserved(self) -> None:
+        """Dotfile paths keep their leading dot (THE original bug)."""
+        stdout = "M  .bmad-assist/running.lock\x00 M .bmad-assist/state.yaml\x00"
+        records = _parse_porcelain_z(stdout)
+        paths = [p for _, p in records]
+        assert ".bmad-assist/running.lock" in paths
+        assert ".bmad-assist/state.yaml" in paths
+        # Neither entry should have lost its dot.
+        assert "bmad-assist/running.lock" not in paths
+
+
+class TestGetModifiedFilesExclusions:
+    """get_modified_files filters out bmad-assist runtime state files."""
+
+    def test_excludes_running_lock(self) -> None:
+        """``.bmad-assist/running.lock`` is bmad-assist's own lock; exclude it."""
+        stdout = (
+            "M  .bmad-assist/running.lock\x00"
+            " M src/real_change.py\x00"
+        )
+        with patch("bmad_assist.git.committer._run_git") as mock_run:
+            mock_run.return_value = (0, stdout, "")
+            files = get_modified_files(Path("/fake"))
+        assert ".bmad-assist/running.lock" not in files
+        assert "src/real_change.py" in files
+
+    def test_excludes_runs_directory(self) -> None:
+        """``.bmad-assist/runs/*`` are per-run logs; never auto-commit."""
+        stdout = (
+            " M .bmad-assist/runs/run-20260417T142447Z-09a886bd.yaml\x00"
+            " M src/real.py\x00"
+        )
+        with patch("bmad_assist.git.committer._run_git") as mock_run:
+            mock_run.return_value = (0, stdout, "")
+            files = get_modified_files(Path("/fake"))
+        assert all(not f.startswith(".bmad-assist/runs/") for f in files)
+        assert "src/real.py" in files
+
+    def test_excludes_prompts_cache_debug_output(self) -> None:
+        """Existing exclusions still work with the -z parser."""
+        stdout = (
+            "?? .bmad-assist/prompts/x.md\x00"
+            "?? .bmad-assist/cache/y.json\x00"
+            "?? .bmad-assist/debug/z.log\x00"
+            "?? _bmad-output/w.md\x00"
+            " M src/real.py\x00"
+        )
+        with patch("bmad_assist.git.committer._run_git") as mock_run:
+            mock_run.return_value = (0, stdout, "")
+            files = get_modified_files(Path("/fake"))
+        assert files == ["src/real.py"]
+
+    def test_legitimate_state_yaml_kept(self) -> None:
+        """``.bmad-assist/state.yaml`` stays in the commit (resume-after-crash)."""
+        stdout = " M .bmad-assist/state.yaml\x00"
+        with patch("bmad_assist.git.committer._run_git") as mock_run:
+            mock_run.return_value = (0, stdout, "")
+            files = get_modified_files(Path("/fake"))
+        assert files == [".bmad-assist/state.yaml"]
+
+    def test_regression_path_integrity(self) -> None:
+        """Leading dots survive parsing (the original failure mode)."""
+        # Reproduces the exact broken input:
+        # previously this got parsed as "bmad-assist/running.lock" (no dot).
+        stdout = "M  .bmad-assist/state.yaml\x00"
+        with patch("bmad_assist.git.committer._run_git") as mock_run:
+            mock_run.return_value = (0, stdout, "")
+            files = get_modified_files(Path("/fake"))
+        assert files == [".bmad-assist/state.yaml"]

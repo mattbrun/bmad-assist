@@ -110,6 +110,58 @@ def _run_git(args: list[str], cwd: Path) -> tuple[int, str, str]:
         return 1, "", "Git not found in PATH"
 
 
+def _parse_porcelain_z(stdout: str) -> list[tuple[str, str]]:
+    """Parse ``git status --porcelain=v1 -z`` output.
+
+    We use ``-z`` because the default (text) porcelain format has a subtle
+    inconsistency: for staged-only modifications with an empty worktree
+    delta, some git versions emit ``M filename`` (2-char prefix: status
+    letter + separator space) instead of the documented ``XY filename``
+    (3-char prefix: 2-char status + separator space). That broke the
+    previous ``line[3:]`` slice, chopping the first char off filenames
+    (e.g. ``.bmad-assist/running.lock`` → ``bmad-assist/running.lock``),
+    which in turn made ``git add -- <path>`` fail with
+    ``pathspec did not match any files``.
+
+    The ``-z`` format is explicitly "for scripts": XY is **always** 2
+    chars, followed by a space, followed by the path, followed by NUL.
+    Renames (``R...``) and copies (``C...``) emit two records separated
+    by NUL: the new path first, then the old path.
+
+    Args:
+        stdout: Raw subprocess stdout (contains NUL separators).
+
+    Returns:
+        List of ``(status, path)`` tuples. ``status`` is the 2-char XY
+        code. For renames/copies, ``path`` is the NEW path (consistent
+        with legacy behavior of taking the post-rename name).
+
+    """
+    records = stdout.split("\x00")
+    results: list[tuple[str, str]] = []
+    i = 0
+    while i < len(records):
+        record = records[i]
+        if not record:
+            i += 1
+            continue
+        # Each record is "XY path" — XY is 2 chars, space separator.
+        if len(record) < 4:
+            # Malformed; skip defensively.
+            i += 1
+            continue
+        status = record[:2]
+        path = record[3:]
+        # Renames/copies: R? or C? in X consumes the next record as the
+        # OLD path. We keep the new path (already captured in ``path``).
+        if status and status[0] in ("R", "C") and i + 1 < len(records):
+            i += 2
+        else:
+            i += 1
+        results.append((status, path))
+    return results
+
+
 def get_modified_files(project_path: Path) -> list[str]:
     """Get list of modified files in the repository.
 
@@ -123,38 +175,37 @@ def get_modified_files(project_path: Path) -> list[str]:
         List of modified file paths relative to repo root.
 
     """
-    # Get both staged and unstaged changes
+    # Use -z for NUL-separated output with guaranteed 2-char XY status.
     exit_code, stdout, _ = _run_git(
-        ["status", "--porcelain", "-uall"],
+        ["status", "--porcelain=v1", "-uall", "-z"],
         project_path,
     )
 
     if exit_code != 0:
         return []
 
-    # Directories to exclude from auto-commit (generated artifacts)
+    # Directories to exclude from auto-commit (generated artifacts).
+    # ``.bmad-assist/runs/`` and ``.bmad-assist/running.lock`` are run-time
+    # state owned by bmad-assist itself — they change every run and would
+    # otherwise appear in every auto-commit as noise AND break ``git add``
+    # when the lock file is deleted between status + stage.
     exclude_prefixes = (
         "_bmad-output/",
         ".bmad-assist/prompts/",
         ".bmad-assist/cache/",
         ".bmad-assist/debug/",
+        ".bmad-assist/runs/",
     )
+    exclude_exact = (".bmad-assist/running.lock",)
 
-    files = []
-    for line in stdout.strip().split("\n"):
-        if line:
-            # porcelain format: XY filename
-            # Skip the status prefix (2 chars + space)
-            filename = line[3:].strip()
-            # Handle renamed files (old -> new)
-            if " -> " in filename:
-                filename = filename.split(" -> ")[1]
-
-            # Skip files in excluded directories
-            if any(filename.startswith(prefix) for prefix in exclude_prefixes):
-                continue
-
-            files.append(filename)
+    files: list[str] = []
+    for _status, filename in _parse_porcelain_z(stdout):
+        # Skip files in excluded directories
+        if any(filename.startswith(prefix) for prefix in exclude_prefixes):
+            continue
+        if filename in exclude_exact:
+            continue
+        files.append(filename)
 
     return files
 
@@ -172,8 +223,9 @@ def check_for_deleted_story_files(project_path: Path) -> list[str]:
         List of deleted story file paths. Empty if none found.
 
     """
+    # Use -z for deterministic parsing (see _parse_porcelain_z docstring).
     exit_code, stdout, _ = _run_git(
-        ["status", "--porcelain", "-uall"],
+        ["status", "--porcelain=v1", "-uall", "-z"],
         project_path,
     )
 
@@ -182,27 +234,18 @@ def check_for_deleted_story_files(project_path: Path) -> list[str]:
 
     import re
 
-    deleted_files = []
+    # docs/sprint-artifacts/{epic}-{story}-{slug}.md or stories/{epic}-{story}-{slug}.md
+    story_pattern = re.compile(
+        r"^(docs/sprint-artifacts/|stories/)?\d+-\d+"
+        r"(?:[a-z](?:-[ivx]{2,})*)?-[\w-]+\.md$"
+    )
 
-    for line in stdout.strip().split("\n"):
-        if not line:
-            continue
+    deleted_files: list[str] = []
 
-        # porcelain format: XY filename
-        # X = staged status, Y = unstaged status
-        # D in either position means deleted
-        status = line[:2]
-        filename = line[3:].strip()
-        if " -> " in filename:
-            filename = filename.split(" -> ")[1]
-
-        # Check if file is deleted (D in staged or unstaged status)
+    for status, filename in _parse_porcelain_z(stdout):
+        # Check if file is deleted (D in staged or unstaged status).
         if "D" not in status:
             continue
-
-        # Check if it's a story file: docs/sprint-artifacts/{epic}-{story}-{slug}.md
-        # or stories/{epic}-{story}-{slug}.md
-        story_pattern = re.compile(r"^(docs/sprint-artifacts/|stories/)?\d+-\d+(?:[a-z](?:-[ivx]{2,})*)?-[\w-]+\.md$")
         if story_pattern.match(filename):
             deleted_files.append(filename)
 
